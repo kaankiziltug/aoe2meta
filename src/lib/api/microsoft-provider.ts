@@ -915,44 +915,85 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CIV STATS
-  // Primary:     aoestats.io (millions of games, latest patch, ~48 civs)
-  // Supplement:  civ-stats-accumulated.json (our data — fills in new DLC civs)
-  // Fallback:    live computation from recent matches
+  // CIV STATS — 31 day sliding window from daily JSON files
+  // Primary:     src/data/daily-stats/*.json (our own collected match data)
+  // Fallback:    aoestats.io (large samples for old civs, no ELO filtering)
+  // Last resort: mock data
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** Read our accumulated JSON. Returns null if file missing. No staleness check — used as supplement only. */
-  private readAccumulatedRaw(mode: GameMode): Record<string, { wins: number; games: number }> | null {
+  /**
+   * Read all daily JSON files from the last 31 days and aggregate records.
+   * Supports ELO filtering.
+   */
+  private readDailyStats(
+    mode: GameMode,
+    eloRange?: [number, number]
+  ): CivStats[] | null {
     try {
-      const filePath = resolve(process.cwd(), "src/data/civ-stats-accumulated.json");
-      if (!existsSync(filePath)) return null;
-      const raw = JSON.parse(readFileSync(filePath, "utf-8")) as {
-        modes: Record<string, Record<string, { wins: number; games: number }>>;
-      };
-      const modeCivs = raw.modes?.[mode];
-      return modeCivs && Object.keys(modeCivs).length > 0 ? modeCivs : null;
+      const dailyDir = resolve(process.cwd(), "src/data/daily-stats");
+      if (!existsSync(dailyDir)) return null;
+
+      const { readdirSync } = require("fs") as typeof import("fs");
+      const files = readdirSync(dailyDir)
+        .filter((f: string) => f.endsWith(".json"))
+        .sort()
+        .slice(-31); // last 31 files
+
+      if (files.length === 0) return null;
+
+      // Aggregate wins/games per civ
+      const civMap = new Map<string, { wins: number; games: number }>();
+      let totalSlots = 0;
+
+      for (const file of files) {
+        try {
+          const raw = JSON.parse(
+            readFileSync(resolve(dailyDir, file), "utf-8")
+          ) as {
+            modes: Record<string, { records: { c: string; w: number; e: number }[] }>;
+          };
+          const modeData = raw.modes?.[mode];
+          if (!modeData?.records) continue;
+
+          for (const rec of modeData.records) {
+            // ELO filter
+            if (eloRange) {
+              if (rec.e < eloRange[0] || rec.e > eloRange[1]) continue;
+            }
+            const entry = civMap.get(rec.c) ?? { wins: 0, games: 0 };
+            entry.games++;
+            if (rec.w) entry.wins++;
+            civMap.set(rec.c, entry);
+            totalSlots++;
+          }
+        } catch {
+          // Skip corrupt file
+          continue;
+        }
+      }
+
+      if (civMap.size === 0 || totalSlots === 0) return null;
+
+      const result: CivStats[] = [];
+      let idx = 0;
+      for (const [civName, v] of civMap) {
+        if (v.games < 5 || civName.startsWith("[")) continue;
+        result.push({
+          civId: idx++,
+          civName,
+          winRate: (v.wins / v.games) * 100,
+          playRate: (v.games / totalSlots) * 100,
+          avgRating: 0,
+          totalGames: v.games,
+        });
+      }
+
+      return result.length > 0
+        ? result.sort((a, b) => b.winRate - a.winRate)
+        : null;
     } catch {
       return null;
     }
-  }
-
-  /** Deprecated wrapper kept for the computeCivStats fallback path */
-  private readAccumulatedStats(mode: GameMode): CivStats[] | null {
-    const modeCivs = this.readAccumulatedRaw(mode);
-    if (!modeCivs) return null;
-    const totalGameSlots = Object.values(modeCivs).reduce((s, v) => s + v.games, 0);
-    const result: CivStats[] = Object.entries(modeCivs)
-      .filter(([civName, v]) => v.games >= 10 && !civName.startsWith("["))
-      .map(([civName, v], idx) => ({
-        civId: idx,
-        civName,
-        winRate: (v.wins / v.games) * 100,
-        playRate: (v.games / totalGameSlots) * 100,
-        avgRating: 0,
-        totalGames: v.games,
-      }))
-      .sort((a, b) => b.winRate - a.winRate);
-    return result.length > 0 ? result : null;
   }
 
   /**
@@ -963,7 +1004,8 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
    * in Vercel's Data Cache and reused across serverless invocations.
    */
   private async fetchAoestatsStats(
-    mode: GameMode
+    mode: GameMode,
+    eloRange?: [number, number]
   ): Promise<Map<string, { winRate: number; totalGames: number }> | null> {
     const groupingMap: Record<string, string> = {
       "rm-1v1": "random_map",
@@ -1052,90 +1094,42 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
 
   async getCivStats(
     mode: GameMode,
-    _eloRange?: [number, number]
+    eloRange?: [number, number]
   ): Promise<CivStats[]> {
-    // 1. Primary: aoestats.io (millions of games, latest patch, ~48 established civs)
-    const aoestats = await this.fetchAoestatsStats(mode);
+    // 1. Primary: our daily stats files (31-day window, supports ELO filtering)
+    const daily = this.readDailyStats(mode, eloRange);
+    if (daily && daily.length > 0) return daily;
 
-    if (aoestats && aoestats.size > 0) {
-      const accRaw = this.readAccumulatedRaw(mode);
-      const accTotalSlots = accRaw
-        ? Object.values(accRaw).reduce((s, v) => s + v.games, 0)
-        : 0;
-
-      // Helper: look up a civ by name in accumulated data (case-insensitive)
-      const accLookup = (name: string) => {
-        if (!accRaw) return null;
-        const lower = name.toLowerCase();
-        const entry = Object.entries(accRaw).find(([k]) => k.toLowerCase() === lower);
-        return entry ? entry[1] : null;
-      };
-
-      const totalSlots = Array.from(aoestats.values())
-        .filter((v) => v.totalGames > 0)
-        .reduce((s, v) => s + v.totalGames, 0);
-
-      let idx = 0;
-      const result: CivStats[] = [];
-
-      for (const [civName, data] of aoestats) {
-        if (data.totalGames === 0) {
-          // Civ exists in aoestats schema but has no data yet — use accumulated
-          const acc = accLookup(civName);
-          if (acc && acc.games >= 10) {
-            result.push({
-              civId: idx++,
-              civName,
-              winRate: (acc.wins / acc.games) * 100,
-              playRate: (acc.games / accTotalSlots) * 100,
-              avgRating: 0,
-              totalGames: acc.games,
-            });
-          }
-          // Skip if no accumulated data either
-          continue;
-        }
-        result.push({
-          civId: idx++,
-          civName,
-          winRate: data.winRate,
-          playRate: (data.totalGames / totalSlots) * 100,
-          avgRating: 0,
-          totalGames: data.totalGames,
-        });
-      }
-
-      // Supplement: add civs from accumulated data not in aoestats at all (newest DLC)
-      if (accRaw) {
-        const knownNames = new Set(Array.from(aoestats.keys()).map((n) => n.toLowerCase()));
-        for (const [civName, v] of Object.entries(accRaw)) {
-          if (civName.startsWith("[")) continue;
-          if (v.games < 10) continue;
-          if (knownNames.has(civName.toLowerCase())) continue;
+    // 2. Fallback: aoestats.io (no ELO filtering, but large sample for old civs)
+    if (!eloRange) {
+      const aoestats = await this.fetchAoestatsStats(mode);
+      if (aoestats && aoestats.size > 0) {
+        const totalSlots = Array.from(aoestats.values())
+          .filter((v) => v.totalGames > 0)
+          .reduce((s, v) => s + v.totalGames, 0);
+        let idx = 0;
+        const result: CivStats[] = [];
+        for (const [civName, data] of aoestats) {
+          if (data.totalGames === 0) continue;
           result.push({
             civId: idx++,
             civName,
-            winRate: (v.wins / v.games) * 100,
-            playRate: (v.games / accTotalSlots) * 100,
+            winRate: data.winRate,
+            playRate: (data.totalGames / totalSlots) * 100,
             avgRating: 0,
-            totalGames: v.games,
+            totalGames: data.totalGames,
           });
         }
+        if (result.length > 0) return result.sort((a, b) => b.winRate - a.winRate);
       }
-
-      return result.sort((a, b) => b.winRate - a.winRate);
     }
 
-    // 2. Fall back to accumulated-only JSON
-    const accumulated = this.readAccumulatedStats(mode);
-    if (accumulated) return accumulated;
-
-    // 3. Fall back to live computation
+    // 3. Fallback: live computation
     try {
       return await this.computeCivStatsFromMatches(mode);
     } catch {
       // 4. Last resort: mock data
-      return this.mock.getCivStats(mode, _eloRange);
+      return this.mock.getCivStats(mode, eloRange);
     }
   }
 

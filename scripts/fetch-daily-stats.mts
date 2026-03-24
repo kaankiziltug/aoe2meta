@@ -1,9 +1,9 @@
 // scripts/fetch-daily-stats.mts
 // Run with: npm run stats:fetch
-// Fetches recent matches for top 200 leaderboard players and accumulates
-// civ win/loss tallies into src/data/civ-stats-accumulated.json
+// Fetches recent matches from spread ELO brackets and writes a daily JSON file.
+// Each file covers one calendar day (UTC). Old files (>31 days) are deleted.
 
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -12,36 +12,48 @@ import { fileURLToPath } from "url";
 const MS_API = "https://api.ageofempires.com/api/v2/ageii";
 const COMPANION_API = "https://data.aoe2companion.com/api";
 
-const DATA_FILE = resolve(
+const DAILY_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../src/data/civ-stats-accumulated.json"
+  "../src/data/daily-stats"
 );
 
-const MODES_TO_FETCH = ["rm-1v1", "rm-team", "ew-1v1", "ew-team"] as const;
+const MODES_TO_FETCH = ["rm-1v1", "rm-team"] as const;
 type Mode = (typeof MODES_TO_FETCH)[number];
 
 const COMPANION_LEADERBOARD: Record<Mode, string> = {
-  "rm-1v1":  "rm_1v1",
+  "rm-1v1": "rm_1v1",
   "rm-team": "rm_team",
-  "ew-1v1":  "ew_1v1",
-  "ew-team": "ew_team",
 };
 
 const MS_PARAMS: Record<Mode, { versus: string; matchType: string; teamSize: string }> = {
-  "rm-1v1":  { versus: "players", matchType: "ranked",   teamSize: "1v1" },
-  "rm-team": { versus: "team",    matchType: "ranked",   teamSize: "2v2" },
-  "ew-1v1":  { versus: "players", matchType: "unranked", teamSize: "1v1" },
-  "ew-team": { versus: "team",    matchType: "unranked", teamSize: "2v2" },
+  "rm-1v1": { versus: "players", matchType: "ranked", teamSize: "1v1" },
+  "rm-team": { versus: "team", matchType: "ranked", teamSize: "2v2" },
 };
+
+// Spread ELO sampling: covers rank 1 → ~45,000
+const SAMPLE_PAGES = [1, 3, 5, 8, 12, 16, 20, 25, 30, 40, 50, 70, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900];
+
+const MATCHES_PER_PLAYER = 50;
+const BATCH_SIZE = 15;
+const BATCH_DELAY_MS = 300;
+const MAX_DAYS = 31;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface CivRecord { wins: number; games: number }
+interface DailyRecord {
+  /** civ name */ c: string;
+  /** won: 1 or 0 */ w: number;
+  /** elo rating */ e: number;
+}
 
-interface AccumulatedData {
-  lastFetch: string;
-  totalMatches: number;
-  modes: Record<string, Record<string, CivRecord>>;
+interface DailyFile {
+  date: string;
+  fetchedAt: string;
+  playerCount: number;
+  modes: Record<string, {
+    matchCount: number;
+    records: DailyRecord[];
+  }>;
 }
 
 interface CompanionPlayer {
@@ -78,7 +90,7 @@ async function fetchLeaderboardPage(
     body: JSON.stringify({ region: 7, ...params, searchPlayer: "", page, count: 50 }),
   });
   if (!res.ok) throw new Error(`MS Leaderboard HTTP ${res.status}`);
-  const data = await res.json() as { items?: { rlUserId: number }[] };
+  const data = (await res.json()) as { items?: { rlUserId: number }[] };
   return (data.items ?? []).map((p) => p.rlUserId).filter(Boolean);
 }
 
@@ -89,31 +101,35 @@ async function fetchPlayerMatches(
   try {
     const res = await fetch(
       `${COMPANION_API}/matches?profile_ids=${profileId}&count=${count}`,
-      { headers: { "User-Agent": "AoE2Insights/1.0" } }
+      { headers: { "User-Agent": "AoE2Meta/1.0" } }
     );
     if (!res.ok) return [];
-    const data = await res.json() as { matches?: CompanionMatch[] };
+    const data = (await res.json()) as { matches?: CompanionMatch[] };
     return data.matches ?? [];
   } catch {
     return [];
   }
 }
 
+function todayUTC(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 // ── Core logic ─────────────────────────────────────────────────────────────
 
-async function processModeUpdate(
+/**
+ * Fetch matches and group them by date (UTC).
+ * Returns a Map<dateString, { matchCount, records }> so we can write multiple daily files.
+ */
+async function fetchModeDataByDate(
   mode: Mode,
-  lastFetch: Date,
-  existingCivs: Record<string, CivRecord>
-): Promise<{ civs: Record<string, CivRecord>; newMatchCount: number }> {
+  cutoffDate: string
+): Promise<Map<string, { matchCount: number; records: DailyRecord[] }>> {
   const params = MS_PARAMS[mode];
   const leaderboardId = COMPANION_LEADERBOARD[mode];
-  const lastFetchTime = lastFetch.toISOString();
 
-  // Sample from spread ELO brackets: top, mid-high, mid, average, lower
-  // With ~45K players and 50/page: page 1=rank 1-50, page 100=rank 4951-5000, page 400=rank 19951-20000
-  const SAMPLE_PAGES = [1, 5, 20, 50, 100, 200, 350, 500];
-  console.log(`  [${mode}] Fetching leaderboard (${SAMPLE_PAGES.length} spread pages covering all ELO brackets)...`);
+  // 1. Fetch leaderboard pages (spread ELO)
+  console.log(`  [${mode}] Fetching ${SAMPLE_PAGES.length} leaderboard pages...`);
   const pages = await Promise.allSettled(
     SAMPLE_PAGES.map((p) => fetchLeaderboardPage(params, p))
   );
@@ -122,17 +138,14 @@ async function processModeUpdate(
     p.status === "fulfilled" ? p.value : []
   );
   const uniqueIds = [...new Set(profileIds)];
-  console.log(`  [${mode}] Got ${uniqueIds.length} unique players`);
+  console.log(`  [${mode}] ${uniqueIds.length} unique players`);
 
-  if (uniqueIds.length === 0) {
-    console.warn(`  [${mode}] No players found, skipping`);
-    return { civs: existingCivs, newMatchCount: 0 };
-  }
+  const byDate = new Map<string, { matchCount: number; records: DailyRecord[] }>();
 
-  const BATCH_SIZE = 10;
-  const MATCHES_PER_PLAYER = 30;
+  if (uniqueIds.length === 0) return byDate;
+
+  // 2. Fetch matches in batches
   const allMatches: CompanionMatch[] = [];
-
   for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
     const batch = uniqueIds.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
@@ -142,96 +155,173 @@ async function processModeUpdate(
       if (r.status === "fulfilled") allMatches.push(...r.value);
     }
     if (i + BATCH_SIZE < uniqueIds.length) {
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
+    const done = Math.min(i + BATCH_SIZE, uniqueIds.length);
+    if (done % 150 === 0 || done === uniqueIds.length) {
+      console.log(`  [${mode}] Fetched ${done}/${uniqueIds.length} players (${allMatches.length} raw matches)`);
     }
   }
 
-  console.log(`  [${mode}] Fetched ${allMatches.length} raw match entries`);
-
-  // Filter: correct mode, newer than lastFetch, deduplicate by matchId
+  // 3. Filter & group by date
   const seen = new Set<string>();
-  const newMatches = allMatches.filter((m) => {
-    if (m.leaderboardId !== leaderboardId) return false;
-    if (m.started <= lastFetchTime) return false;
+
+  for (const m of allMatches) {
+    if (m.leaderboardId !== leaderboardId) continue;
+    if (m.started < cutoffDate) continue;
     const key = String(m.matchId);
-    if (seen.has(key)) return false;
+    if (seen.has(key)) continue;
     seen.add(key);
-    return true;
-  });
 
-  console.log(`  [${mode}] ${newMatches.length} new unique matches since ${lastFetchTime}`);
+    // Extract date from started timestamp
+    const matchDate = m.started.slice(0, 10); // "YYYY-MM-DD"
+    if (!byDate.has(matchDate)) {
+      byDate.set(matchDate, { matchCount: 0, records: [] });
+    }
+    const bucket = byDate.get(matchDate)!;
+    bucket.matchCount++;
 
-  const updated = { ...existingCivs };
-  for (const match of newMatches) {
-    for (const team of match.teams ?? []) {
+    for (const team of m.teams ?? []) {
       for (const player of team.players ?? []) {
         const name = capitalizeCivName(player.civName || player.civ);
         if (!name || name.startsWith("[")) continue;
-        const rec = updated[name] ?? { wins: 0, games: 0 };
-        rec.games++;
-        if (player.won) rec.wins++;
-        updated[name] = rec;
+        bucket.records.push({
+          c: name,
+          w: player.won ? 1 : 0,
+          e: player.rating || 0,
+        });
       }
     }
   }
 
-  return { civs: updated, newMatchCount: newMatches.length };
+  const totalMatches = Array.from(byDate.values()).reduce((s, v) => s + v.matchCount, 0);
+  const totalRecords = Array.from(byDate.values()).reduce((s, v) => s + v.records.length, 0);
+  console.log(`  [${mode}] ${totalMatches} unique matches, ${totalRecords} records across ${byDate.size} days`);
+  return byDate;
+}
+
+// ── Cleanup ────────────────────────────────────────────────────────────────
+
+function cleanupOldFiles() {
+  if (!existsSync(DAILY_DIR)) return;
+  const files = readdirSync(DAILY_DIR).filter((f) => f.endsWith(".json")).sort();
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - MAX_DAYS);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+  let removed = 0;
+  for (const file of files) {
+    const date = file.replace(".json", "");
+    if (date < cutoffStr) {
+      unlinkSync(resolve(DAILY_DIR, file));
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    console.log(`Cleaned up ${removed} files older than ${MAX_DAYS} days`);
+  }
+}
+
+// ── Merge with existing daily file ─────────────────────────────────────────
+
+function loadExistingDaily(date: string): DailyFile | null {
+  const path = resolve(DAILY_DIR, `${date}.json`);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as DailyFile;
+  } catch {
+    return null;
+  }
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log("=== AoE2Meta daily stats fetch ===");
-  console.log(`Data file: ${DATA_FILE}`);
+  console.log(`=== AoE2Meta daily stats fetch ===`);
+  console.log(`Output dir: ${DAILY_DIR}`);
 
-  let data: AccumulatedData;
-  try {
-    if (existsSync(DATA_FILE)) {
-      data = JSON.parse(readFileSync(DATA_FILE, "utf-8")) as AccumulatedData;
-      console.log(`Loaded existing data: ${data.totalMatches} total matches, last fetch: ${data.lastFetch}`);
-    } else {
-      throw new Error("File not found");
-    }
-  } catch {
-    console.warn("Starting fresh accumulation from epoch");
-    data = {
-      lastFetch: new Date(0).toISOString(),
-      totalMatches: 0,
-      modes: {},
-    };
-  }
+  // Cutoff: 31 days ago (to fill the entire window on first run)
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - MAX_DAYS);
+  const cutoffDate = cutoff.toISOString().slice(0, 10) + "T00:00:00.000Z";
+  console.log(`Cutoff: ${cutoffDate}`);
 
-  const lastFetch = new Date(data.lastFetch);
-  const runStart = new Date();
-  let totalNewMatches = 0;
+  // Collect data per date per mode
+  const allDates = new Map<string, DailyFile>();
 
   for (const mode of MODES_TO_FETCH) {
     console.log(`\nProcessing: ${mode}`);
     try {
-      const existing = (data.modes[mode] ?? {}) as Record<string, CivRecord>;
-      const { civs, newMatchCount } = await processModeUpdate(mode, lastFetch, existing);
-      data.modes[mode] = civs;
-      totalNewMatches += newMatchCount;
-      const civCount = Object.keys(civs).length;
-      console.log(`  [${mode}] Done. ${civCount} civs tracked, ${newMatchCount} new matches`);
+      const byDate = await fetchModeDataByDate(mode, cutoffDate);
+
+      for (const [date, data] of byDate) {
+        if (!allDates.has(date)) {
+          // Load existing file for this date if present
+          const existing = loadExistingDaily(date);
+          allDates.set(date, existing ?? {
+            date,
+            fetchedAt: new Date().toISOString(),
+            playerCount: SAMPLE_PAGES.length * 50,
+            modes: {},
+          });
+        }
+        const file = allDates.get(date)!;
+
+        if (file.modes[mode]) {
+          // Merge with existing
+          const prev = file.modes[mode];
+          // Deduplicate by building a set of existing record hashes
+          const existingSet = new Set(
+            prev.records.map((r) => `${r.c}|${r.w}|${r.e}`)
+          );
+          const newRecords = data.records.filter(
+            (r) => !existingSet.has(`${r.c}|${r.w}|${r.e}`)
+          );
+          prev.matchCount += data.matchCount;
+          prev.records.push(...newRecords);
+        } else {
+          file.modes[mode] = data;
+        }
+      }
     } catch (err) {
       console.error(`  [${mode}] Error:`, err);
     }
   }
 
-  data.lastFetch = runStart.toISOString();
-  data.totalMatches += totalNewMatches;
+  // Write all date files
+  console.log(`\n=== Writing ${allDates.size} daily files ===`);
+  let totalRecords = 0;
+  const sortedDates = [...allDates.keys()].sort();
 
-  console.log(`\n=== Summary ===`);
-  console.log(`New matches this run: ${totalNewMatches}`);
-  console.log(`Cumulative total: ${data.totalMatches}`);
-  for (const mode of MODES_TO_FETCH) {
-    const civs = data.modes[mode] ?? {};
-    console.log(`  ${mode}: ${Object.keys(civs).length} civs`);
+  for (const date of sortedDates) {
+    const file = allDates.get(date)!;
+    file.fetchedAt = new Date().toISOString();
+    const outPath = resolve(DAILY_DIR, `${date}.json`);
+    writeFileSync(outPath, JSON.stringify(file) + "\n", "utf-8");
+
+    const records = Object.values(file.modes).reduce((s, m) => s + m.records.length, 0);
+    totalRecords += records;
+
+    const modes = Object.entries(file.modes)
+      .map(([m, d]) => `${m}: ${d.matchCount} matches`)
+      .join(", ");
+    console.log(`  ${date}: ${records} records (${modes})`);
   }
 
-  writeFileSync(DATA_FILE, JSON.stringify(data, null, 2) + "\n", "utf-8");
-  console.log("\nData file updated successfully.");
+  const sizeMB = sortedDates.reduce((s, d) => {
+    const f = allDates.get(d)!;
+    return s + Buffer.byteLength(JSON.stringify(f));
+  }, 0) / 1024 / 1024;
+
+  console.log(`\n=== Summary ===`);
+  console.log(`Days with data: ${allDates.size}`);
+  console.log(`Total records: ${totalRecords}`);
+  console.log(`Total size: ${sizeMB.toFixed(2)} MB`);
+
+  // Cleanup old files
+  cleanupOldFiles();
+
+  console.log("\nDone.");
 }
 
 main().catch((err) => {
