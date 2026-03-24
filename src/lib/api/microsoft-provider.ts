@@ -983,13 +983,21 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
       if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) {
         patch = cached.patch;
       } else {
-        const patchRes = await fetch("https://aoestats.io/api/patches/?format=json");
-        const patches = (await patchRes.json()) as Array<{ number: number; published: boolean }>;
-        const latest = patches
-          .filter((p) => p.published)
-          .sort((a, b) => b.number - a.number)[0];
-        patch = latest?.number ?? null;
-        if (patch) g[PATCH_CACHE] = { patch, ts: Date.now() };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+          const patchRes = await fetch("https://aoestats.io/api/patches/?format=json", {
+            signal: controller.signal,
+          });
+          const patches = (await patchRes.json()) as Array<{ number: number; published: boolean }>;
+          const latest = patches
+            .filter((p) => p.published)
+            .sort((a, b) => b.number - a.number)[0];
+          patch = latest?.number ?? null;
+          if (patch) g[PATCH_CACHE] = { patch, ts: Date.now() };
+        } finally {
+          clearTimeout(timeout);
+        }
       }
     } catch {
       patch = null;
@@ -1005,9 +1013,17 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     };
 
     try {
-      const res = await fetch(
-        `https://aoestats.io/api/stats/?patch=${patch}&grouping=${grouping}&elo_range=all&format=json`
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      let res: Response;
+      try {
+        res = await fetch(
+          `https://aoestats.io/api/stats/?patch=${patch}&grouping=${grouping}&elo_range=all&format=json`,
+          { signal: controller.signal }
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       // Response: [{patch, grouping, elo_grouping, civ_stats: { "franks": {...}, ... }}]
       const stats = (await res.json()) as Array<{
         civ_stats: Record<string, { win_rate: number; num_games: number }>;
