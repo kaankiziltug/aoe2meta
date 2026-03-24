@@ -118,7 +118,7 @@ export default function StatsPage() {
           Civilization Statistics
         </h1>
         <p className="mt-1 text-muted-foreground">
-          Win rates, pick rates, and meta analysis for all civilizations
+          Win rates and pick rates from the last 30 days of ranked matches. Updated daily.
         </p>
       </div>
 

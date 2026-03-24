@@ -210,7 +210,7 @@ export default async function TierListPage({ searchParams }: PageProps) {
           <span className="font-mono font-medium text-foreground">
             {totalGames.toLocaleString()}
           </span>{" "}
-          ranked games. Patch 99458 · Updated daily.
+          ranked games from the last 30 days. Updated daily from live match data.
         </p>
 
         {/* Mode selector */}

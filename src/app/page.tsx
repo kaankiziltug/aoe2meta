@@ -84,7 +84,7 @@ export default function HomePage() {
               Hub
             </h1>
             <p className="mb-8 text-lg text-muted-foreground md:text-xl">
-              Civilization win rates, leaderboards, player stats and match history — all in one place.
+              Real-time civilization win rates from the last 30 days, leaderboards, player stats and match history — all in one place.
             </p>
             <Button
               size="lg"
@@ -105,14 +105,14 @@ export default function HomePage() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <TrendingUp className="h-4 w-4 text-primary" />
                   <span className="font-medium text-foreground">Civilization Tier List</span>
-                  <span>· RM 1v1 · Latest Patch</span>
+                  <span>· RM 1v1 · Last 30 Days</span>
                 </div>
                 <Link href="/tier-list" className="text-xs text-primary hover:underline flex items-center gap-1">
                   Full tier list <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
               <p className="text-[11px] text-muted-foreground/60 mb-3">
-                Win rates from real match data · Updated daily · Includes all DLC civilizations</p>
+                Based on {topCivs.reduce((s, c) => s + c.totalGames, 0).toLocaleString()} matches from the last 30 days · Updated daily · All {topCivs.length} civilizations</p>
               {loadingCivs ? (
                 <div className="space-y-2">
                   {Array.from({ length: 3 }).map((_, i) => (
