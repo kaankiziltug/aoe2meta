@@ -26,7 +26,7 @@ import {
   RatingPoint,
 } from "./types";
 import { MockDataProvider } from "./mock-data";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { resolve } from "path";
 
 const MS_API = "https://api.ageofempires.com/api/v2/ageii";
@@ -933,7 +933,6 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
       const dailyDir = resolve(process.cwd(), "src/data/daily-stats");
       if (!existsSync(dailyDir)) return null;
 
-      const { readdirSync } = require("fs") as typeof import("fs");
       const files = readdirSync(dailyDir)
         .filter((f: string) => f.endsWith(".json"))
         .sort()
