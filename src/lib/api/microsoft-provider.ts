@@ -974,24 +974,30 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     const grouping = groupingMap[mode];
     if (!grouping) return null;
 
-    // Step 1: get latest patch number (cached 24h in Next.js Data Cache)
+    // Step 1: get latest patch number (cached 24h in globalThis, falls back to live)
     let patch: number | null = null;
     try {
-      const patchRes = await fetch("https://aoestats.io/api/patches/?format=json", {
-        next: { revalidate: 86400 }, // 24h
-      });
-      const patches = (await patchRes.json()) as Array<{ number: number; published: boolean }>;
-      const latest = patches
-        .filter((p) => p.published)
-        .sort((a, b) => b.number - a.number)[0];
-      patch = latest?.number ?? null;
+      const g = globalThis as Record<string, unknown>;
+      const PATCH_CACHE = "__aoestats_latest_patch__";
+      const cached = g[PATCH_CACHE] as { patch: number; ts: number } | undefined;
+      if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) {
+        patch = cached.patch;
+      } else {
+        const patchRes = await fetch("https://aoestats.io/api/patches/?format=json");
+        const patches = (await patchRes.json()) as Array<{ number: number; published: boolean }>;
+        const latest = patches
+          .filter((p) => p.published)
+          .sort((a, b) => b.number - a.number)[0];
+        patch = latest?.number ?? null;
+        if (patch) g[PATCH_CACHE] = { patch, ts: Date.now() };
+      }
     } catch {
       patch = null;
     }
 
     if (!patch) return null;
 
-    // Step 2: fetch civ stats for latest patch (cached 6h in Next.js Data Cache)
+    // Step 2: fetch civ stats for latest patch (cached 6h in globalThis)
     // aoestats uses some names that differ from aoe2companion match data
     const nameOverrides: Record<string, string> = {
       incas: "Inca",
@@ -1000,8 +1006,7 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
 
     try {
       const res = await fetch(
-        `https://aoestats.io/api/stats/?patch=${patch}&grouping=${grouping}&elo_range=all&format=json`,
-        { next: { revalidate: 21600 } } // 6h
+        `https://aoestats.io/api/stats/?patch=${patch}&grouping=${grouping}&elo_range=all&format=json`
       );
       // Response: [{patch, grouping, elo_grouping, civ_stats: { "franks": {...}, ... }}]
       const stats = (await res.json()) as Array<{
