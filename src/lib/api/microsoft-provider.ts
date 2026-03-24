@@ -955,44 +955,16 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     return result.length > 0 ? result : null;
   }
 
-  /** Fetch latest published patch number from aoestats.io. Cached 24h. */
-  private async getLatestAoestatsPatch(): Promise<number | null> {
-    const CACHE_KEY = "__aoestats_patch__";
-    const g = globalThis as Record<string, unknown>;
-    const cached = g[CACHE_KEY] as { patch: number; ts: number } | undefined;
-    if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) return cached.patch;
-    try {
-      const res = await fetch("https://aoestats.io/api/patches/?format=json", {
-        signal: AbortSignal.timeout(5000),
-      });
-      const patches = (await res.json()) as Array<{ number: number; published: boolean }>;
-      const latest = patches
-        .filter((p) => p.published)
-        .sort((a, b) => b.number - a.number)[0];
-      if (!latest) return null;
-      g[CACHE_KEY] = { patch: latest.number, ts: Date.now() };
-      return latest.patch_number;
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Fetch civ win-rate data from aoestats.io for the latest patch.
    * Returns a Map<civName, {winRate%, totalGames}> or null on failure.
-   * Cached in globalThis for 6 hours.
+   *
+   * Uses Next.js fetch cache (next.revalidate) so the response is cached
+   * in Vercel's Data Cache and reused across serverless invocations.
    */
   private async fetchAoestatsStats(
     mode: GameMode
   ): Promise<Map<string, { winRate: number; totalGames: number }> | null> {
-    const CACHE_KEY = `__aoestats_stats_${mode}__`;
-    const g = globalThis as Record<string, unknown>;
-    const cached = g[CACHE_KEY] as {
-      data: Map<string, { winRate: number; totalGames: number }>;
-      ts: number;
-    } | undefined;
-    if (cached && Date.now() - cached.ts < 6 * 60 * 60 * 1000) return cached.data;
-
     const groupingMap: Record<string, string> = {
       "rm-1v1": "random_map",
       "rm-team": "team_random_map",
@@ -1002,9 +974,24 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     const grouping = groupingMap[mode];
     if (!grouping) return null;
 
-    const patch = await this.getLatestAoestatsPatch();
+    // Step 1: get latest patch number (cached 24h in Next.js Data Cache)
+    let patch: number | null = null;
+    try {
+      const patchRes = await fetch("https://aoestats.io/api/patches/?format=json", {
+        next: { revalidate: 86400 }, // 24h
+      });
+      const patches = (await patchRes.json()) as Array<{ number: number; published: boolean }>;
+      const latest = patches
+        .filter((p) => p.published)
+        .sort((a, b) => b.number - a.number)[0];
+      patch = latest?.number ?? null;
+    } catch {
+      patch = null;
+    }
+
     if (!patch) return null;
 
+    // Step 2: fetch civ stats for latest patch (cached 6h in Next.js Data Cache)
     // aoestats uses some names that differ from aoe2companion match data
     const nameOverrides: Record<string, string> = {
       incas: "Inca",
@@ -1014,7 +1001,7 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     try {
       const res = await fetch(
         `https://aoestats.io/api/stats/?patch=${patch}&grouping=${grouping}&elo_range=all&format=json`,
-        { signal: AbortSignal.timeout(10000) }
+        { next: { revalidate: 21600 } } // 6h
       );
       // Response: [{patch, grouping, elo_grouping, civ_stats: { "franks": {...}, ... }}]
       const stats = (await res.json()) as Array<{
@@ -1027,7 +1014,6 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
 
       const map = new Map<string, { winRate: number; totalGames: number }>();
       for (const [key, cs] of Object.entries(civStatsDict)) {
-        // Normalize: "hindustanis" → "Hindustanis", with override for "incas"→"Inca" etc.
         const civName =
           nameOverrides[key] ??
           key
@@ -1037,9 +1023,7 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
         map.set(civName, { winRate: cs.win_rate * 100, totalGames: cs.num_games });
       }
 
-      if (map.size === 0) return null;
-      g[CACHE_KEY] = { data: map, ts: Date.now() };
-      return map;
+      return map.size > 0 ? map : null;
     } catch {
       return null;
     }
@@ -1229,6 +1213,7 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
       }))
       .sort((a, b) => b.winRate - a.winRate);
 
+    if (result.length === 0) throw new Error("No civ data computed from matches");
     g[CACHE_KEY] = { data: result, ts: Date.now() };
     return result;
   }
