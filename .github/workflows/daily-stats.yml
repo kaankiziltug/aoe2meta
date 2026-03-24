@@ -1,0 +1,39 @@
+name: Daily civ stats accumulation
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 02:00 UTC every day
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
+
+jobs:
+  fetch-stats:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run daily stats fetch
+        run: npm run stats:fetch
+
+      - name: Commit updated stats
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/data/civ-stats-accumulated.json
+          git diff --cached --quiet && echo "No new matches, skipping commit" || \
+            git commit -m "chore: update civ stats [skip ci]"
+
+      - name: Push changes
+        run: git push

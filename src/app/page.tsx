@@ -35,7 +35,7 @@ export default function HomePage() {
     fetch("/api/stats?mode=rm-1v1")
       .then((r) => r.json())
       .then((data: CivStats[]) => {
-        setTopCivs(Array.isArray(data) ? data.slice(0, 10) : []);
+        setTopCivs(Array.isArray(data) ? data : []);
         setLoadingCivs(false);
       })
       .catch(() => setLoadingCivs(false));
@@ -99,57 +99,68 @@ export default function HomePage() {
               </kbd>
             </Button>
 
-            {/* Top 10 Civs Meta Grid */}
+            {/* Tier List */}
             <div className="mt-10 w-full max-w-3xl mx-auto">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <TrendingUp className="h-4 w-4 text-primary" />
-                  <span className="font-medium text-foreground">Top Civilizations</span>
+                  <span className="font-medium text-foreground">Civilization Tier List</span>
                   <span>· RM 1v1 · Latest Patch</span>
                 </div>
-                <Link href="/stats" className="text-xs text-primary hover:underline flex items-center gap-1">
-                  View all <ArrowRight className="h-3 w-3" />
+                <Link href="/tier-list" className="text-xs text-primary hover:underline flex items-center gap-1">
+                  Full tier list <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
-              <div className="grid grid-cols-5 gap-2 md:grid-cols-10">
-                {loadingCivs
-                  ? Array.from({ length: 10 }).map((_, i) => (
-                      <div key={i} className="flex flex-col items-center gap-2 rounded-xl border border-border/40 bg-card/60 p-3">
-                        <Skeleton className="h-5 w-5 rounded" />
-                        <Skeleton className="h-10 w-10 rounded-lg" />
-                        <Skeleton className="h-3 w-full rounded" />
-                        <Skeleton className="h-3 w-8 rounded" />
+              <p className="text-[11px] text-muted-foreground/60 mb-3">
+                Win rates from real match data · Updated daily · Includes all DLC civilizations</p>
+              {loadingCivs ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-lg shrink-0" />
+                      <div className="flex gap-2 flex-1 overflow-hidden">
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <Skeleton key={j} className="h-14 w-14 rounded-xl shrink-0" />
+                        ))}
                       </div>
-                    ))
-                  : topCivs.map((civ, i) => (
-                      <Link href="/stats" key={civ.civName}>
-                        <div className="group flex flex-col items-center gap-1.5 rounded-xl border border-border/40 bg-card/60 p-2.5 text-center backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-card/90 cursor-pointer">
-                          <span className={`text-[10px] font-bold font-mono ${
-                            i === 0 ? "text-yellow-400" :
-                            i === 1 ? "text-slate-300" :
-                            i === 2 ? "text-orange-400" :
-                            "text-muted-foreground"
-                          }`}>#{i + 1}</span>
-                          <div className="relative h-10 w-10 overflow-hidden rounded-lg">
-                            <Image
-                              src={getCivImageUrl(civ.civName)}
-                              alt={civ.civName}
-                              width={40}
-                              height={40}
-                              className="h-full w-full object-cover transition-transform group-hover:scale-110"
-                              unoptimized
-                            />
-                          </div>
-                          <span className="text-[10px] font-medium leading-tight line-clamp-1">{civ.civName}</span>
-                          <span className={`text-[11px] font-bold font-mono ${
-                            civ.winRate >= 52 ? "text-win" : civ.winRate >= 50 ? "text-primary" : "text-loss"
-                          }`}>
-                            {civ.winRate.toFixed(1)}%
-                          </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {(
+                    [
+                      { label: "S", min: 52.5, color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30" },
+                      { label: "A", min: 51.5, color: "text-green-400",  bg: "bg-green-400/10 border-green-400/30" },
+                      { label: "B", min: 50.0, color: "text-blue-400",   bg: "bg-blue-400/10 border-blue-400/30" },
+                      { label: "C", min: 48.5, color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/30" },
+                      { label: "D", min: 0,    color: "text-red-400",    bg: "bg-red-400/10 border-red-400/30" },
+                    ] as { label: string; min: number; color: string; bg: string }[]
+                  ).map(({ label, min, color, bg }) => {
+                    const next = label === "S" ? Infinity : label === "A" ? 52.5 : label === "B" ? 51.5 : label === "C" ? 50.0 : 48.5;
+                    const civs = topCivs.filter(c => c.winRate >= min && c.winRate < next);
+                    if (civs.length === 0) return null;
+                    return (
+                      <div key={label} className={`flex items-center gap-2 rounded-xl border p-2 ${bg}`}>
+                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xl font-black ${color}`}>{label}</span>
+                        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
+                          {civs.map((civ) => (
+                            <Link key={civ.civName} href={`/civ/${civ.civName.toLowerCase().replace(/\s+/g, "_")}`}>
+                              <div className="group flex shrink-0 flex-col items-center gap-1 rounded-lg border border-border/30 bg-background/40 p-1.5 text-center transition-all hover:border-primary/40 hover:scale-105 cursor-pointer w-14">
+                                <div className="h-8 w-8 overflow-hidden rounded-md">
+                                  <Image src={getCivImageUrl(civ.civName)} alt={civ.civName} width={32} height={32} className="h-full w-full object-cover" unoptimized />
+                                </div>
+                                <span className="text-[9px] font-medium leading-tight line-clamp-1 w-full">{civ.civName}</span>
+                                <span className={`text-[9px] font-bold font-mono ${civ.winRate >= 50 ? "text-green-400" : "text-red-400"}`}>{civ.winRate.toFixed(1)}%</span>
+                              </div>
+                            </Link>
+                          ))}
                         </div>
-                      </Link>
-                    ))}
-              </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -285,6 +296,28 @@ export default function HomePage() {
           </CardContent>
         </Card>
       </section>
+
+      {/* JSON-LD Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "AoE2Meta",
+            url: "https://aoe2meta.com",
+            description: "Age of Empires II Definitive Edition statistics, meta analysis, and leaderboards",
+            potentialAction: {
+              "@type": "SearchAction",
+              target: {
+                "@type": "EntryPoint",
+                urlTemplate: "https://aoe2meta.com/player/{search_term_string}",
+              },
+              "query-input": "required name=search_term_string",
+            },
+          }),
+        }}
+      />
 
       {/* Quick Links */}
       <section className="mx-auto max-w-7xl px-4 pb-12">

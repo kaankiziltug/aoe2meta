@@ -1,0 +1,842 @@
+{
+  "lastFetch": "2026-03-24T17:14:00.857Z",
+  "totalMatches": 5194,
+  "modes": {
+    "rm-1v1": {
+      "Burgundians": {
+        "wins": 127,
+        "games": 279
+      },
+      "Sicilians": {
+        "wins": 115,
+        "games": 238
+      },
+      "Japanese": {
+        "wins": 65,
+        "games": 146
+      },
+      "Spanish": {
+        "wins": 149,
+        "games": 328
+      },
+      "Bohemians": {
+        "wins": 110,
+        "games": 236
+      },
+      "Italians": {
+        "wins": 84,
+        "games": 183
+      },
+      "Turks": {
+        "wins": 157,
+        "games": 314
+      },
+      "Chinese": {
+        "wins": 96,
+        "games": 217
+      },
+      "Goths": {
+        "wins": 121,
+        "games": 232
+      },
+      "Bulgarians": {
+        "wins": 63,
+        "games": 117
+      },
+      "Celts": {
+        "wins": 60,
+        "games": 131
+      },
+      "Portuguese": {
+        "wins": 115,
+        "games": 238
+      },
+      "Persians": {
+        "wins": 191,
+        "games": 343
+      },
+      "Vietnamese": {
+        "wins": 116,
+        "games": 258
+      },
+      "Aztecs": {
+        "wins": 56,
+        "games": 137
+      },
+      "Inca": {
+        "wins": 58,
+        "games": 122
+      },
+      "Franks": {
+        "wins": 250,
+        "games": 420
+      },
+      "Maya": {
+        "wins": 54,
+        "games": 117
+      },
+      "Mongols": {
+        "wins": 83,
+        "games": 164
+      },
+      "Berbers": {
+        "wins": 34,
+        "games": 85
+      },
+      "Shu": {
+        "wins": 15,
+        "games": 46
+      },
+      "Huns": {
+        "wins": 200,
+        "games": 408
+      },
+      "Bengalis": {
+        "wins": 38,
+        "games": 77
+      },
+      "Khmer": {
+        "wins": 170,
+        "games": 337
+      },
+      "Khitans": {
+        "wins": 12,
+        "games": 22
+      },
+      "Teutons": {
+        "wins": 171,
+        "games": 335
+      },
+      "Dravidians": {
+        "wins": 32,
+        "games": 78
+      },
+      "Byzantines": {
+        "wins": 123,
+        "games": 214
+      },
+      "Cumans": {
+        "wins": 66,
+        "games": 137
+      },
+      "Koreans": {
+        "wins": 68,
+        "games": 146
+      },
+      "Magyars": {
+        "wins": 66,
+        "games": 133
+      },
+      "Ethiopians": {
+        "wins": 54,
+        "games": 103
+      },
+      "Britons": {
+        "wins": 205,
+        "games": 406
+      },
+      "Tatars": {
+        "wins": 42,
+        "games": 90
+      },
+      "Slavs": {
+        "wins": 35,
+        "games": 77
+      },
+      "Saracens": {
+        "wins": 39,
+        "games": 84
+      },
+      "Muisca": {
+        "wins": 13,
+        "games": 24
+      },
+      "Wu": {
+        "wins": 18,
+        "games": 32
+      },
+      "Romans": {
+        "wins": 64,
+        "games": 128
+      },
+      "Malay": {
+        "wins": 61,
+        "games": 130
+      },
+      "Vikings": {
+        "wins": 82,
+        "games": 161
+      },
+      "Lithuanians": {
+        "wins": 56,
+        "games": 134
+      },
+      "Mapuche": {
+        "wins": 12,
+        "games": 32
+      },
+      "Gurjaras": {
+        "wins": 46,
+        "games": 103
+      },
+      "Burmese": {
+        "wins": 33,
+        "games": 65
+      },
+      "Hindustanis": {
+        "wins": 38,
+        "games": 95
+      },
+      "Poles": {
+        "wins": 50,
+        "games": 103
+      },
+      "Malians": {
+        "wins": 43,
+        "games": 76
+      },
+      "Jurchens": {
+        "wins": 21,
+        "games": 36
+      },
+      "Tupi": {
+        "wins": 20,
+        "games": 41
+      },
+      "Wei": {
+        "wins": 11,
+        "games": 31
+      },
+      "Armenians": {
+        "wins": 12,
+        "games": 22
+      },
+      "Georgians": {
+        "wins": 7,
+        "games": 22
+      },
+      "[civ.unknown]": {
+        "wins": 1,
+        "games": 1
+      }
+    },
+    "rm-team": {
+      "Mongols": {
+        "wins": 55,
+        "games": 105
+      },
+      "Britons": {
+        "wins": 106,
+        "games": 208
+      },
+      "Franks": {
+        "wins": 108,
+        "games": 223
+      },
+      "Burgundians": {
+        "wins": 46,
+        "games": 108
+      },
+      "Bohemians": {
+        "wins": 61,
+        "games": 140
+      },
+      "Persians": {
+        "wins": 136,
+        "games": 237
+      },
+      "Portuguese": {
+        "wins": 50,
+        "games": 104
+      },
+      "Celts": {
+        "wins": 39,
+        "games": 82
+      },
+      "Spanish": {
+        "wins": 111,
+        "games": 201
+      },
+      "Hindustanis": {
+        "wins": 36,
+        "games": 60
+      },
+      "Dravidians": {
+        "wins": 20,
+        "games": 45
+      },
+      "Khmer": {
+        "wins": 113,
+        "games": 231
+      },
+      "Maya": {
+        "wins": 22,
+        "games": 53
+      },
+      "Chinese": {
+        "wins": 56,
+        "games": 105
+      },
+      "Malay": {
+        "wins": 24,
+        "games": 62
+      },
+      "Vikings": {
+        "wins": 24,
+        "games": 57
+      },
+      "Turks": {
+        "wins": 74,
+        "games": 146
+      },
+      "Cumans": {
+        "wins": 32,
+        "games": 57
+      },
+      "Berbers": {
+        "wins": 20,
+        "games": 39
+      },
+      "Bulgarians": {
+        "wins": 29,
+        "games": 58
+      },
+      "Gurjaras": {
+        "wins": 15,
+        "games": 40
+      },
+      "Goths": {
+        "wins": 55,
+        "games": 105
+      },
+      "Slavs": {
+        "wins": 18,
+        "games": 47
+      },
+      "Aztecs": {
+        "wins": 20,
+        "games": 50
+      },
+      "Vietnamese": {
+        "wins": 57,
+        "games": 116
+      },
+      "Ethiopians": {
+        "wins": 23,
+        "games": 60
+      },
+      "Japanese": {
+        "wins": 54,
+        "games": 92
+      },
+      "Teutons": {
+        "wins": 96,
+        "games": 174
+      },
+      "Koreans": {
+        "wins": 39,
+        "games": 66
+      },
+      "Tatars": {
+        "wins": 14,
+        "games": 47
+      },
+      "Saracens": {
+        "wins": 25,
+        "games": 45
+      },
+      "Inca": {
+        "wins": 37,
+        "games": 67
+      },
+      "Burmese": {
+        "wins": 10,
+        "games": 38
+      },
+      "Khitans": {
+        "wins": 10,
+        "games": 20
+      },
+      "Byzantines": {
+        "wins": 52,
+        "games": 111
+      },
+      "Italians": {
+        "wins": 34,
+        "games": 75
+      },
+      "Wei": {
+        "wins": 31,
+        "games": 58
+      },
+      "Huns": {
+        "wins": 68,
+        "games": 162
+      },
+      "Mapuche": {
+        "wins": 11,
+        "games": 23
+      },
+      "Magyars": {
+        "wins": 39,
+        "games": 87
+      },
+      "Lithuanians": {
+        "wins": 38,
+        "games": 77
+      },
+      "Georgians": {
+        "wins": 13,
+        "games": 24
+      },
+      "Malians": {
+        "wins": 16,
+        "games": 46
+      },
+      "Armenians": {
+        "wins": 16,
+        "games": 23
+      },
+      "Sicilians": {
+        "wins": 33,
+        "games": 70
+      },
+      "Wu": {
+        "wins": 21,
+        "games": 39
+      },
+      "Jurchens": {
+        "wins": 20,
+        "games": 34
+      },
+      "Poles": {
+        "wins": 38,
+        "games": 79
+      },
+      "Bengalis": {
+        "wins": 12,
+        "games": 22
+      },
+      "Tupi": {
+        "wins": 20,
+        "games": 36
+      },
+      "Romans": {
+        "wins": 62,
+        "games": 104
+      },
+      "Shu": {
+        "wins": 5,
+        "games": 12
+      },
+      "Muisca": {
+        "wins": 5,
+        "games": 12
+      }
+    },
+    "ew-1v1": {
+      "Byzantines": {
+        "wins": 5,
+        "games": 10
+      },
+      "Vietnamese": {
+        "wins": 3,
+        "games": 7
+      },
+      "Malay": {
+        "wins": 4,
+        "games": 7
+      },
+      "Celts": {
+        "wins": 2,
+        "games": 4
+      },
+      "Persians": {
+        "wins": 5,
+        "games": 8
+      },
+      "Berbers": {
+        "wins": 2,
+        "games": 3
+      },
+      "Magyars": {
+        "wins": 3,
+        "games": 6
+      },
+      "Bohemians": {
+        "wins": 2,
+        "games": 10
+      },
+      "Italians": {
+        "wins": 3,
+        "games": 9
+      },
+      "Portuguese": {
+        "wins": 5,
+        "games": 20
+      },
+      "Koreans": {
+        "wins": 3,
+        "games": 10
+      },
+      "Turks": {
+        "wins": 1,
+        "games": 4
+      },
+      "Sicilians": {
+        "wins": 2,
+        "games": 2
+      },
+      "Romans": {
+        "wins": 1,
+        "games": 3
+      },
+      "Spanish": {
+        "wins": 11,
+        "games": 26
+      },
+      "Chinese": {
+        "wins": 6,
+        "games": 9
+      },
+      "Franks": {
+        "wins": 9,
+        "games": 15
+      },
+      "Teutons": {
+        "wins": 7,
+        "games": 16
+      },
+      "Inca": {
+        "wins": 3,
+        "games": 4
+      },
+      "Britons": {
+        "wins": 2,
+        "games": 6
+      },
+      "Saracens": {
+        "wins": 4,
+        "games": 6
+      },
+      "Japanese": {
+        "wins": 2,
+        "games": 5
+      },
+      "Aztecs": {
+        "wins": 3,
+        "games": 6
+      },
+      "Cumans": {
+        "wins": 2,
+        "games": 6
+      },
+      "Dravidians": {
+        "wins": 4,
+        "games": 5
+      },
+      "Tatars": {
+        "wins": 1,
+        "games": 3
+      },
+      "Gurjaras": {
+        "wins": 0,
+        "games": 5
+      },
+      "Mongols": {
+        "wins": 5,
+        "games": 6
+      },
+      "Bulgarians": {
+        "wins": 9,
+        "games": 12
+      },
+      "Khitans": {
+        "wins": 1,
+        "games": 1
+      },
+      "Khmer": {
+        "wins": 4,
+        "games": 5
+      },
+      "Poles": {
+        "wins": 3,
+        "games": 3
+      },
+      "Hindustanis": {
+        "wins": 0,
+        "games": 3
+      },
+      "Maya": {
+        "wins": 4,
+        "games": 6
+      },
+      "Goths": {
+        "wins": 3,
+        "games": 3
+      },
+      "Burmese": {
+        "wins": 0,
+        "games": 1
+      },
+      "Lithuanians": {
+        "wins": 2,
+        "games": 3
+      },
+      "Malians": {
+        "wins": 1,
+        "games": 3
+      },
+      "Huns": {
+        "wins": 2,
+        "games": 6
+      },
+      "Ethiopians": {
+        "wins": 1,
+        "games": 1
+      },
+      "Burgundians": {
+        "wins": 2,
+        "games": 2
+      },
+      "Vikings": {
+        "wins": 1,
+        "games": 5
+      },
+      "Jurchens": {
+        "wins": 2,
+        "games": 2
+      },
+      "Armenians": {
+        "wins": 0,
+        "games": 1
+      },
+      "Wu": {
+        "wins": 1,
+        "games": 2
+      },
+      "Wei": {
+        "wins": 1,
+        "games": 1
+      },
+      "Georgians": {
+        "wins": 1,
+        "games": 1
+      }
+    },
+    "ew-team": {
+      "Vikings": {
+        "wins": 5,
+        "games": 9
+      },
+      "Hindustanis": {
+        "wins": 4,
+        "games": 6
+      },
+      "Cumans": {
+        "wins": 12,
+        "games": 22
+      },
+      "Vietnamese": {
+        "wins": 10,
+        "games": 14
+      },
+      "Portuguese": {
+        "wins": 13,
+        "games": 41
+      },
+      "Malay": {
+        "wins": 1,
+        "games": 6
+      },
+      "Saracens": {
+        "wins": 8,
+        "games": 12
+      },
+      "Dravidians": {
+        "wins": 4,
+        "games": 7
+      },
+      "Britons": {
+        "wins": 12,
+        "games": 25
+      },
+      "Celts": {
+        "wins": 3,
+        "games": 8
+      },
+      "Khmer": {
+        "wins": 22,
+        "games": 37
+      },
+      "Tupi": {
+        "wins": 3,
+        "games": 10
+      },
+      "Persians": {
+        "wins": 8,
+        "games": 21
+      },
+      "Sicilians": {
+        "wins": 4,
+        "games": 12
+      },
+      "Mapuche": {
+        "wins": 4,
+        "games": 8
+      },
+      "Chinese": {
+        "wins": 5,
+        "games": 25
+      },
+      "Gurjaras": {
+        "wins": 1,
+        "games": 6
+      },
+      "Lithuanians": {
+        "wins": 4,
+        "games": 5
+      },
+      "Tatars": {
+        "wins": 4,
+        "games": 6
+      },
+      "Romans": {
+        "wins": 8,
+        "games": 11
+      },
+      "Armenians": {
+        "wins": 5,
+        "games": 7
+      },
+      "Byzantines": {
+        "wins": 3,
+        "games": 7
+      },
+      "Bulgarians": {
+        "wins": 5,
+        "games": 8
+      },
+      "Teutons": {
+        "wins": 6,
+        "games": 17
+      },
+      "Japanese": {
+        "wins": 3,
+        "games": 5
+      },
+      "Aztecs": {
+        "wins": 3,
+        "games": 7
+      },
+      "Italians": {
+        "wins": 4,
+        "games": 6
+      },
+      "Shu": {
+        "wins": 3,
+        "games": 6
+      },
+      "Huns": {
+        "wins": 10,
+        "games": 20
+      },
+      "Turks": {
+        "wins": 7,
+        "games": 15
+      },
+      "Ethiopians": {
+        "wins": 10,
+        "games": 13
+      },
+      "Franks": {
+        "wins": 8,
+        "games": 29
+      },
+      "Mongols": {
+        "wins": 6,
+        "games": 12
+      },
+      "Inca": {
+        "wins": 3,
+        "games": 6
+      },
+      "Spanish": {
+        "wins": 13,
+        "games": 27
+      },
+      "Magyars": {
+        "wins": 10,
+        "games": 15
+      },
+      "Bohemians": {
+        "wins": 5,
+        "games": 9
+      },
+      "Poles": {
+        "wins": 4,
+        "games": 6
+      },
+      "Muisca": {
+        "wins": 1,
+        "games": 2
+      },
+      "Goths": {
+        "wins": 7,
+        "games": 9
+      },
+      "Koreans": {
+        "wins": 5,
+        "games": 7
+      },
+      "Maya": {
+        "wins": 5,
+        "games": 9
+      },
+      "Slavs": {
+        "wins": 2,
+        "games": 7
+      },
+      "Burgundians": {
+        "wins": 3,
+        "games": 8
+      },
+      "Wei": {
+        "wins": 7,
+        "games": 10
+      },
+      "Berbers": {
+        "wins": 4,
+        "games": 7
+      },
+      "Jurchens": {
+        "wins": 0,
+        "games": 1
+      },
+      "Burmese": {
+        "wins": 3,
+        "games": 8
+      },
+      "Malians": {
+        "wins": 1,
+        "games": 2
+      },
+      "Bengalis": {
+        "wins": 0,
+        "games": 2
+      },
+      "Khitans": {
+        "wins": 3,
+        "games": 3
+      },
+      "Wu": {
+        "wins": 0,
+        "games": 1
+      },
+      "Georgians": {
+        "wins": 2,
+        "games": 2
+      }
+    }
+  }
+}

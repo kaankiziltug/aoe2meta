@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import Link from "next/link";
 import { CivStats, GameMode } from "@/lib/api/types";
 import { GAME_MODES, getCivImageUrl } from "@/lib/constants";
 
@@ -171,7 +172,11 @@ export default function StatsPage() {
               <CardContent>
                 <div className="space-y-3">
                   {top5.map((civ, i) => (
-                    <div key={civ.civName} className="flex items-center gap-3">
+                    <Link
+                      key={civ.civName}
+                      href={`/civ/${civ.civName.toLowerCase().replace(/\s+/g, "_")}`}
+                      className="flex items-center gap-3 rounded-lg hover:bg-accent/30 transition-colors px-1 -mx-1 py-0.5"
+                    >
                       <span
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                           i === 0
@@ -193,7 +198,7 @@ export default function StatsPage() {
                       </div>
                       <span className="flex-1 text-sm font-medium">{civ.civName}</span>
                       <WinRateBar rate={civ.winRate} />
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </CardContent>
@@ -209,7 +214,11 @@ export default function StatsPage() {
               <CardContent>
                 <div className="space-y-3">
                   {bottom5.map((civ, i) => (
-                    <div key={civ.civName} className="flex items-center gap-3">
+                    <Link
+                      key={civ.civName}
+                      href={`/civ/${civ.civName.toLowerCase().replace(/\s+/g, "_")}`}
+                      className="flex items-center gap-3 rounded-lg hover:bg-accent/30 transition-colors px-1 -mx-1 py-0.5"
+                    >
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground">
                         {stats.length - 4 + i}
                       </span>
@@ -225,7 +234,7 @@ export default function StatsPage() {
                       </div>
                       <span className="flex-1 text-sm font-medium">{civ.civName}</span>
                       <WinRateBar rate={civ.winRate} />
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </CardContent>
@@ -318,7 +327,13 @@ export default function StatsPage() {
                   </TableHeader>
                   <TableBody>
                     {sorted.map((civ, i) => (
-                      <TableRow key={civ.civName} className="border-border/30">
+                      <TableRow
+                        key={civ.civName}
+                        className="border-border/30 cursor-pointer hover:bg-accent/40"
+                        onClick={() => {
+                          window.location.href = `/civ/${civ.civName.toLowerCase().replace(/\s+/g, "_")}`;
+                        }}
+                      >
                         <TableCell className="text-sm text-muted-foreground">
                           {i + 1}
                         </TableCell>

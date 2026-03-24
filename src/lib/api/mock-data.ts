@@ -1,11 +1,15 @@
 import {
   AoE2DataProvider,
+  CivDetail,
+  CivPatchPoint,
   CivStats,
   GameMode,
   LeaderboardEntry,
   LeaderboardResponse,
+  MapStats,
   Match,
   MatchPlayer,
+  MetaReport,
   Player,
   PlayerProfile,
   RatingPoint,
@@ -287,6 +291,10 @@ export class MockDataProvider implements AoE2DataProvider {
     return allMatches.slice(start, start + count);
   }
 
+  async getCivDetail(_civSlug: string): Promise<CivDetail | null> {
+    return null;
+  }
+
   async getCivStats(
     _mode: GameMode,
     _eloRange?: [number, number]
@@ -300,5 +308,25 @@ export class MockDataProvider implements AoE2DataProvider {
       avgRating: 1200 + Math.floor(rand() * 600),
       totalGames: 500 + Math.floor(rand() * 5000),
     }));
+  }
+
+  async getMapStats(_mode: GameMode): Promise<MapStats[]> {
+    return [];
+  }
+
+  async getCivPatchHistory(): Promise<CivPatchPoint[]> {
+    return [];
+  }
+
+  async getMetaReport(): Promise<MetaReport> {
+    return {
+      currentPatch: "",
+      previousPatch: "",
+      currentPatchLabel: "",
+      previousPatchLabel: "",
+      biggestRisers: [],
+      biggestFallers: [],
+      allChanges: [],
+    };
   }
 }

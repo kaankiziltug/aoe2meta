@@ -81,6 +81,47 @@ export interface CivStats {
   totalGames: number;
 }
 
+export interface CivMapStat {
+  mapName: string;
+  winRate: number;
+  numGames: number;
+  playRate: number;
+}
+
+export interface CivMatchupStat {
+  civName: string;
+  winRate: number;
+  numGames: number;
+}
+
+export interface CivEloBreakdown {
+  elo: string;
+  eloLabel: string;
+  winRate: number;
+  numGames: number;
+  playRate: number;
+  rank: number;
+}
+
+export interface CivDetail {
+  civName: string;
+  civSlug: string;
+  rank: number;
+  winRate: number;
+  playRate: number;
+  totalGames: number;
+  eloBreakdown: CivEloBreakdown[];
+  topMaps: CivMapStat[];
+  bottomMaps: CivMapStat[];
+  bestMatchups: CivMatchupStat[];
+  worstMatchups: CivMatchupStat[];
+  byGameLength: { label: string; winRate: number; numGames: number }[];
+  avgFeudalTime: number;
+  avgCastleTime: number;
+  avgImperialTime: number;
+  avgGameLength: number;
+}
+
 export interface PlayerProfile extends Player {
   totalGames: number;
   totalWins: number;
@@ -94,6 +135,50 @@ export interface PlayerProfile extends Player {
   bestCivs: { civId: number; civName: string; winRate: number; games: number }[];
   bestMaps: { mapName: string; winRate: number; games: number }[];
   recentMatches: Match[];
+}
+
+export interface MapCivStat {
+  civName: string;
+  winRate: number;
+  numGames: number;
+  playRate: number;
+}
+
+export interface MapStats {
+  mapName: string;      // "Arabia"
+  mapSlug: string;      // "arabia"
+  totalGames: number;
+  topCivs: MapCivStat[];    // top 5 civs by win rate (min 100 games)
+  bottomCivs: MapCivStat[]; // bottom 5 civs
+}
+
+export interface CivPatchPoint {
+  patch: string;
+  patchLabel: string;
+  winRate: number;
+  numGames: number;
+  rank: number;
+}
+
+export interface CivChange {
+  civName: string;
+  currentWinRate: number;
+  previousWinRate: number;
+  change: number; // positive = improved, negative = declined
+  currentRank: number;
+  previousRank: number;
+  rankChange: number; // positive = climbed
+  totalGames: number;
+}
+
+export interface MetaReport {
+  currentPatch: string;
+  previousPatch: string;
+  currentPatchLabel: string;
+  previousPatchLabel: string;
+  biggestRisers: CivChange[];   // top 8 civs that improved most
+  biggestFallers: CivChange[];  // top 8 civs that fell most
+  allChanges: CivChange[];      // all civs sorted by change desc
 }
 
 export interface AoE2DataProvider {
@@ -117,4 +202,8 @@ export interface AoE2DataProvider {
     mode: GameMode,
     eloRange?: [number, number]
   ): Promise<CivStats[]>;
+  getCivDetail(civSlug: string, mode?: GameMode): Promise<CivDetail | null>;
+  getMapStats(mode: GameMode): Promise<MapStats[]>;
+  getCivPatchHistory(civSlug: string, mode?: GameMode): Promise<CivPatchPoint[]>;
+  getMetaReport(mode?: GameMode): Promise<MetaReport>;
 }

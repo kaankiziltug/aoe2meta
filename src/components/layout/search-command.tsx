@@ -45,11 +45,12 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
 
   // Debounced search
   useEffect(() => {
-    if (query.length < 2) { setResults([]); return; }
+    const trimmed = query.trim();
+    if (trimmed.length < 2) { setResults([]); return; }
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
         const data = await res.json();
         setResults(Array.isArray(data) ? data : []);
         setSelected(0);
