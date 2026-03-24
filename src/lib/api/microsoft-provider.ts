@@ -915,43 +915,131 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CIV STATS  (computed from aoe2companion recent matches — includes all DLC civs)
-  // Fetches ~3000 recent matches in parallel batches and tallies win/loss per civ
+  // CIV STATS
+  // Primary:     aoestats.io (millions of games, latest patch, ~48 civs)
+  // Supplement:  civ-stats-accumulated.json (our data — fills in new DLC civs)
+  // Fallback:    live computation from recent matches
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private readAccumulatedStats(mode: GameMode): CivStats[] | null {
+  /** Read our accumulated JSON. Returns null if file missing. No staleness check — used as supplement only. */
+  private readAccumulatedRaw(mode: GameMode): Record<string, { wins: number; games: number }> | null {
     try {
       const filePath = resolve(process.cwd(), "src/data/civ-stats-accumulated.json");
       if (!existsSync(filePath)) return null;
-
       const raw = JSON.parse(readFileSync(filePath, "utf-8")) as {
-        lastFetch: string;
-        totalMatches: number;
         modes: Record<string, Record<string, { wins: number; games: number }>>;
       };
-
       const modeCivs = raw.modes?.[mode];
-      if (!modeCivs || Object.keys(modeCivs).length === 0) return null;
+      return modeCivs && Object.keys(modeCivs).length > 0 ? modeCivs : null;
+    } catch {
+      return null;
+    }
+  }
 
-      // Reject data older than 48 hours — fall back to live computation
-      const age = Date.now() - new Date(raw.lastFetch).getTime();
-      if (age > 48 * 60 * 60 * 1000) return null;
+  /** Deprecated wrapper kept for the computeCivStats fallback path */
+  private readAccumulatedStats(mode: GameMode): CivStats[] | null {
+    const modeCivs = this.readAccumulatedRaw(mode);
+    if (!modeCivs) return null;
+    const totalGameSlots = Object.values(modeCivs).reduce((s, v) => s + v.games, 0);
+    const result: CivStats[] = Object.entries(modeCivs)
+      .filter(([civName, v]) => v.games >= 10 && !civName.startsWith("["))
+      .map(([civName, v], idx) => ({
+        civId: idx,
+        civName,
+        winRate: (v.wins / v.games) * 100,
+        playRate: (v.games / totalGameSlots) * 100,
+        avgRating: 0,
+        totalGames: v.games,
+      }))
+      .sort((a, b) => b.winRate - a.winRate);
+    return result.length > 0 ? result : null;
+  }
 
-      const totalGameSlots = Object.values(modeCivs).reduce((s, v) => s + v.games, 0);
+  /** Fetch latest published patch number from aoestats.io. Cached 24h. */
+  private async getLatestAoestatsPatch(): Promise<number | null> {
+    const CACHE_KEY = "__aoestats_patch__";
+    const g = globalThis as Record<string, unknown>;
+    const cached = g[CACHE_KEY] as { patch: number; ts: number } | undefined;
+    if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) return cached.patch;
+    try {
+      const res = await fetch("https://aoestats.io/api/patches/?format=json", {
+        signal: AbortSignal.timeout(5000),
+      });
+      const patches = (await res.json()) as Array<{ number: number; published: boolean }>;
+      const latest = patches
+        .filter((p) => p.published)
+        .sort((a, b) => b.number - a.number)[0];
+      if (!latest) return null;
+      g[CACHE_KEY] = { patch: latest.number, ts: Date.now() };
+      return latest.patch_number;
+    } catch {
+      return null;
+    }
+  }
 
-      const result: CivStats[] = Object.entries(modeCivs)
-        .filter(([civName, v]) => v.games >= 10 && !civName.startsWith("["))
-        .map(([civName, v], idx) => ({
-          civId: idx,
-          civName,
-          winRate: (v.wins / v.games) * 100,
-          playRate: (v.games / totalGameSlots) * 100,
-          avgRating: 0,
-          totalGames: v.games,
-        }))
-        .sort((a, b) => b.winRate - a.winRate);
+  /**
+   * Fetch civ win-rate data from aoestats.io for the latest patch.
+   * Returns a Map<civName, {winRate%, totalGames}> or null on failure.
+   * Cached in globalThis for 6 hours.
+   */
+  private async fetchAoestatsStats(
+    mode: GameMode
+  ): Promise<Map<string, { winRate: number; totalGames: number }> | null> {
+    const CACHE_KEY = `__aoestats_stats_${mode}__`;
+    const g = globalThis as Record<string, unknown>;
+    const cached = g[CACHE_KEY] as {
+      data: Map<string, { winRate: number; totalGames: number }>;
+      ts: number;
+    } | undefined;
+    if (cached && Date.now() - cached.ts < 6 * 60 * 60 * 1000) return cached.data;
 
-      return result.length > 0 ? result : null;
+    const groupingMap: Record<string, string> = {
+      "rm-1v1": "random_map",
+      "rm-team": "team_random_map",
+      "ew-1v1": "co_random_map",
+      "ew-team": "co_team_random_map",
+    };
+    const grouping = groupingMap[mode];
+    if (!grouping) return null;
+
+    const patch = await this.getLatestAoestatsPatch();
+    if (!patch) return null;
+
+    // aoestats uses some names that differ from aoe2companion match data
+    const nameOverrides: Record<string, string> = {
+      incas: "Inca",
+      mayans: "Maya",
+    };
+
+    try {
+      const res = await fetch(
+        `https://aoestats.io/api/stats/?patch=${patch}&grouping=${grouping}&elo_range=all&format=json`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      // Response: [{patch, grouping, elo_grouping, civ_stats: { "franks": {...}, ... }}]
+      const stats = (await res.json()) as Array<{
+        civ_stats: Record<string, { win_rate: number; num_games: number }>;
+      }>;
+
+      if (!Array.isArray(stats) || stats.length === 0) return null;
+      const civStatsDict = stats[0]?.civ_stats;
+      if (!civStatsDict) return null;
+
+      const map = new Map<string, { winRate: number; totalGames: number }>();
+      for (const [key, cs] of Object.entries(civStatsDict)) {
+        // Normalize: "hindustanis" → "Hindustanis", with override for "incas"→"Inca" etc.
+        const civName =
+          nameOverrides[key] ??
+          key
+            .split("_")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+        map.set(civName, { winRate: cs.win_rate * 100, totalGames: cs.num_games });
+      }
+
+      if (map.size === 0) return null;
+      g[CACHE_KEY] = { data: map, ts: Date.now() };
+      return map;
     } catch {
       return null;
     }
@@ -961,15 +1049,87 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     mode: GameMode,
     _eloRange?: [number, number]
   ): Promise<CivStats[]> {
-    // 1. Try accumulated JSON (persistent, updated daily by GitHub Actions)
+    // 1. Primary: aoestats.io (millions of games, latest patch, ~48 established civs)
+    const aoestats = await this.fetchAoestatsStats(mode);
+
+    if (aoestats && aoestats.size > 0) {
+      const accRaw = this.readAccumulatedRaw(mode);
+      const accTotalSlots = accRaw
+        ? Object.values(accRaw).reduce((s, v) => s + v.games, 0)
+        : 0;
+
+      // Helper: look up a civ by name in accumulated data (case-insensitive)
+      const accLookup = (name: string) => {
+        if (!accRaw) return null;
+        const lower = name.toLowerCase();
+        const entry = Object.entries(accRaw).find(([k]) => k.toLowerCase() === lower);
+        return entry ? entry[1] : null;
+      };
+
+      const totalSlots = Array.from(aoestats.values())
+        .filter((v) => v.totalGames > 0)
+        .reduce((s, v) => s + v.totalGames, 0);
+
+      let idx = 0;
+      const result: CivStats[] = [];
+
+      for (const [civName, data] of aoestats) {
+        if (data.totalGames === 0) {
+          // Civ exists in aoestats schema but has no data yet — use accumulated
+          const acc = accLookup(civName);
+          if (acc && acc.games >= 10) {
+            result.push({
+              civId: idx++,
+              civName,
+              winRate: (acc.wins / acc.games) * 100,
+              playRate: (acc.games / accTotalSlots) * 100,
+              avgRating: 0,
+              totalGames: acc.games,
+            });
+          }
+          // Skip if no accumulated data either
+          continue;
+        }
+        result.push({
+          civId: idx++,
+          civName,
+          winRate: data.winRate,
+          playRate: (data.totalGames / totalSlots) * 100,
+          avgRating: 0,
+          totalGames: data.totalGames,
+        });
+      }
+
+      // Supplement: add civs from accumulated data not in aoestats at all (newest DLC)
+      if (accRaw) {
+        const knownNames = new Set(Array.from(aoestats.keys()).map((n) => n.toLowerCase()));
+        for (const [civName, v] of Object.entries(accRaw)) {
+          if (civName.startsWith("[")) continue;
+          if (v.games < 10) continue;
+          if (knownNames.has(civName.toLowerCase())) continue;
+          result.push({
+            civId: idx++,
+            civName,
+            winRate: (v.wins / v.games) * 100,
+            playRate: (v.games / accTotalSlots) * 100,
+            avgRating: 0,
+            totalGames: v.games,
+          });
+        }
+      }
+
+      return result.sort((a, b) => b.winRate - a.winRate);
+    }
+
+    // 2. Fall back to accumulated-only JSON
     const accumulated = this.readAccumulatedStats(mode);
     if (accumulated) return accumulated;
 
-    // 2. Fall back to live computation
+    // 3. Fall back to live computation
     try {
       return await this.computeCivStatsFromMatches(mode);
     } catch {
-      // 3. Last resort: mock data
+      // 4. Last resort: mock data
       return this.mock.getCivStats(mode, _eloRange);
     }
   }
