@@ -987,18 +987,17 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     const cached = g[CACHE_KEY] as { data: CivStats[]; ts: number } | undefined;
     if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
 
-    // Step 1: Get top players from multiple leaderboard pages
+    // Step 1: Sample from spread ELO brackets (not just top players)
     const modeParams = gameModeToParams(mode);
-    const [lb1, lb2, lb3] = await Promise.allSettled([
-      this.fetchLeaderboard({ ...modeParams, searchPlayer: "", page: 1, count: 50 }),
-      this.fetchLeaderboard({ ...modeParams, searchPlayer: "", page: 2, count: 50 }),
-      this.fetchLeaderboard({ ...modeParams, searchPlayer: "", page: 3, count: 50 }),
-    ]);
-    const profileIds = [
-      ...(lb1.status === "fulfilled" ? (lb1.value.items ?? []) : []),
-      ...(lb2.status === "fulfilled" ? (lb2.value.items ?? []) : []),
-      ...(lb3.status === "fulfilled" ? (lb3.value.items ?? []) : []),
-    ].map((p) => p.rlUserId).filter(Boolean);
+    const SAMPLE_PAGES = [1, 10, 30, 60, 100];
+    const lbResults = await Promise.allSettled(
+      SAMPLE_PAGES.map((pg) =>
+        this.fetchLeaderboard({ ...modeParams, searchPlayer: "", page: pg, count: 30 })
+      )
+    );
+    const profileIds = lbResults.flatMap((r) =>
+      r.status === "fulfilled" ? (r.value.items ?? []).map((p) => p.rlUserId) : []
+    ).filter(Boolean);
 
     if (profileIds.length === 0) throw new Error("No players from leaderboard");
 

@@ -110,13 +110,13 @@ async function processModeUpdate(
   const leaderboardId = COMPANION_LEADERBOARD[mode];
   const lastFetchTime = lastFetch.toISOString();
 
-  console.log(`  [${mode}] Fetching leaderboard (4 pages)...`);
-  const pages = await Promise.allSettled([
-    fetchLeaderboardPage(params, 1),
-    fetchLeaderboardPage(params, 2),
-    fetchLeaderboardPage(params, 3),
-    fetchLeaderboardPage(params, 4),
-  ]);
+  // Sample from spread ELO brackets: top, mid-high, mid, average, lower
+  // With ~45K players and 50/page: page 1=rank 1-50, page 100=rank 4951-5000, page 400=rank 19951-20000
+  const SAMPLE_PAGES = [1, 5, 20, 50, 100, 200, 350, 500];
+  console.log(`  [${mode}] Fetching leaderboard (${SAMPLE_PAGES.length} spread pages covering all ELO brackets)...`);
+  const pages = await Promise.allSettled(
+    SAMPLE_PAGES.map((p) => fetchLeaderboardPage(params, p))
+  );
 
   const profileIds = pages.flatMap((p) =>
     p.status === "fulfilled" ? p.value : []
