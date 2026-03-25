@@ -1,11 +1,14 @@
 import { Metadata } from "next";
 import Image from "next/image";
-import { Map, Trophy, AlertTriangle } from "lucide-react";
+import { Map, Trophy, AlertTriangle, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createDataProvider } from "@/lib/api/provider";
 import { getCivImageUrl } from "@/lib/constants";
 import { GameMode, MapCivStat, MapStats } from "@/lib/api/types";
 import { ModeSelector } from "./mode-selector";
+
+// ── Coming soon overlay ───────────────────────────────────────────────────────
+const COMING_SOON = true; // flip to false when data is sufficient
 
 export const metadata: Metadata = {
   title: "Map Statistics",
@@ -141,39 +144,81 @@ export default async function MapsPage({
         </p>
       </div>
 
-      {/* Filters row */}
-      <div className="mb-8 flex flex-wrap items-center gap-4">
-        <ModeSelector currentMode={mode} currentElo={eloKey} />
+      {/* Coming soon wrapper */}
+      {COMING_SOON ? (
+        <div className="relative">
+          {/* Blurred preview */}
+          <div className="pointer-events-none select-none blur-[2px] opacity-30">
+            <div className="mb-8 flex flex-wrap items-center gap-4">
+              <div className="h-9 w-64 rounded-md bg-muted animate-pulse" />
+              <div className="flex gap-1.5">
+                {ELO_OPTIONS.map((opt) => (
+                  <div key={opt.key} className="h-7 w-16 rounded-md bg-muted animate-pulse" />
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-52 rounded-xl bg-card border border-border/60 animate-pulse" />
+              ))}
+            </div>
+          </div>
 
-        {/* ELO selector */}
-        <div className="flex flex-wrap gap-1.5">
-          {ELO_OPTIONS.map((opt) => (
-            <a
-              key={opt.key}
-              href={`/maps?mode=${mode}&elo=${opt.key}`}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                eloKey === opt.key
-                  ? "bg-orange-500 text-white"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {opt.label}
-            </a>
-          ))}
+          {/* Overlay */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+            <div className="rounded-2xl border border-border/60 bg-card/90 backdrop-blur-md px-10 py-8 text-center shadow-2xl max-w-sm">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-orange-500/10">
+                <Clock className="h-7 w-7 text-orange-400" />
+              </div>
+              <h2 className="mb-2 text-xl font-bold">Coming Soon</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                We&apos;re collecting match data to build reliable map statistics.
+                Check back in a few weeks as our dataset grows daily.
+              </p>
+              <div className="mt-5 flex items-center justify-center gap-2 rounded-lg bg-muted/50 px-4 py-2.5">
+                <div className="h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
+                <span className="text-xs text-muted-foreground">Collecting data daily</span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Map grid */}
-      {maps.length === 0 ? (
-        <p className="text-center text-muted-foreground py-16">
-          No map data available for this ELO range yet. Check back later.
-        </p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {maps.map((map) => (
-            <MapCard key={map.mapSlug} map={map} />
-          ))}
-        </div>
+        <>
+          {/* Filters row */}
+          <div className="mb-8 flex flex-wrap items-center gap-4">
+            <ModeSelector currentMode={mode} currentElo={eloKey} />
+
+            {/* ELO selector */}
+            <div className="flex flex-wrap gap-1.5">
+              {ELO_OPTIONS.map((opt) => (
+                <a
+                  key={opt.key}
+                  href={`/maps?mode=${mode}&elo=${opt.key}`}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    eloKey === opt.key
+                      ? "bg-orange-500 text-white"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {opt.label}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* Map grid */}
+          {maps.length === 0 ? (
+            <p className="text-center text-muted-foreground py-16">
+              No map data available for this ELO range yet. Check back later.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {maps.map((map) => (
+                <MapCard key={map.mapSlug} map={map} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </main>
   );
