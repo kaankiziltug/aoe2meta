@@ -95,6 +95,12 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9719471971523631"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
+        <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-4FR9WLLZHM"
           strategy="afterInteractive"
         />
