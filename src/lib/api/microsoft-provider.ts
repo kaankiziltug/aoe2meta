@@ -827,7 +827,10 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
 
       // Parse "all" response for main stats
       const allData = responses[0] as AoestatsStatsEntry[] | null;
-      if (!allData?.[0]?.civ_stats) return null;
+      if (!allData?.[0]?.civ_stats) {
+        // aoestats unavailable — try daily data as full fallback
+        return this.getCivDetailFromDaily(civSlug, mode);
+      }
 
       // Find civ in the data — slug may be "britons" or "el_dorado" style
       const civStats = allData[0].civ_stats;
@@ -895,45 +898,12 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
         };
       });
 
-      // ── Override win rate + ELO breakdown with our daily data ──────────────
-      // aoestats.io is from 2023; our daily files have current-patch live data.
-      // We keep aoestats for rich details (maps, matchups) but show consistent
-      // numbers with the tier list / stats page.
-      const dailyAll = this.readDailyStats(mode);
-      const dailyEntry = dailyAll?.find(
-        (c) => c.civName.toLowerCase() === civName.toLowerCase()
-      );
-
-      const finalWinRate = dailyEntry?.winRate ?? civ.win_rate * 100;
-      const finalTotalGames = dailyEntry?.totalGames ?? civ.num_games;
-      const finalPlayRate = dailyEntry?.playRate ?? civ.play_rate * 100;
-
-      // Build ELO breakdown from daily sliding-window files
-      const ELO_RANGES_DAILY: [string, string, [number, number] | undefined][] = [
-        ["all", "All Elos", undefined],
-        ["low", "<800", [0, 799]],
-        ["med_low", "800–1100", [800, 1099]],
-        ["medium", "1100–1400", [1100, 1399]],
-        ["med_high", "1400–1800", [1400, 1799]],
-        ["high", "1800+", [1800, 9999]],
-      ];
-
-      const dailyEloBreakdown: CivEloBreakdown[] = ELO_RANGES_DAILY.map(([elo, eloLabel, range]) => {
-        const filtered = this.readDailyStats(mode, range);
-        const entry = filtered?.find(
-          (c) => c.civName.toLowerCase() === civName.toLowerCase()
-        );
-        // Fall back to aoestats elo breakdown if daily has no data for that bucket
-        const aoestatsElo = eloBreakdown.find((e) => e.elo === elo);
-        return {
-          elo,
-          eloLabel,
-          winRate: entry?.winRate ?? aoestatsElo?.winRate ?? 0,
-          numGames: entry?.totalGames ?? aoestatsElo?.numGames ?? 0,
-          playRate: entry?.playRate ?? aoestatsElo?.playRate ?? 0,
-          rank: aoestatsElo?.rank ?? 0,
-        };
-      });
+      // Use aoestats win rate as the authoritative value (large accurate sample,
+      // current patch). Our daily data has a small noisy sample that causes
+      // inconsistency with the stats page which now also uses aoestats as primary.
+      const finalWinRate = civ.win_rate * 100;
+      const finalTotalGames = civ.num_games;
+      const finalPlayRate = civ.play_rate * 100;
 
       return {
         civName,
@@ -942,7 +912,7 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
         winRate: finalWinRate,
         playRate: finalPlayRate,
         totalGames: finalTotalGames,
-        eloBreakdown: dailyEloBreakdown,
+        eloBreakdown,
         topMaps: mapEntries.slice(0, 6),
         bottomMaps: mapEntries.slice(-5).reverse(),
         bestMatchups: matchupEntries.slice(0, 8),
@@ -1206,11 +1176,10 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     mode: GameMode,
     eloRange?: [number, number]
   ): Promise<CivStats[]> {
-    // 1. Primary: our daily stats files (31-day window, supports ELO filtering)
-    const daily = this.readDailyStats(mode, eloRange);
-    if (daily && daily.length > 0) return daily;
-
-    // 2. Fallback: aoestats.io (no ELO filtering, but large sample for old civs)
+    // 1. Primary: aoestats.io (large accurate sample, current patch)
+    // Supplement with daily data for new DLC civs not yet in aoestats.
+    // ELO filtering falls through to daily data (step 2) since fetchAoestatsStats
+    // always fetches elo_range=all.
     if (!eloRange) {
       const aoestats = await this.fetchAoestatsStats(mode);
       if (aoestats && aoestats.size > 0) {
@@ -1230,9 +1199,23 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
             totalGames: data.totalGames,
           });
         }
+        // Supplement with new DLC civs from daily data that aren't in aoestats
+        const aoestatsLower = new Set([...aoestats.keys()].map((k) => k.toLowerCase()));
+        const daily = this.readDailyStats(mode);
+        if (daily) {
+          for (const civStat of daily) {
+            if (!aoestatsLower.has(civStat.civName.toLowerCase())) {
+              result.push({ ...civStat, civId: idx++ });
+            }
+          }
+        }
         if (result.length > 0) return result.sort((a, b) => b.winRate - a.winRate);
       }
     }
+
+    // 2. ELO-filtered or aoestats unavailable: daily stats files (31-day window)
+    const daily = this.readDailyStats(mode, eloRange);
+    if (daily && daily.length > 0) return daily;
 
     // 3. Fallback: live computation
     try {

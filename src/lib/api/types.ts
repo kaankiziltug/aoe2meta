@@ -203,7 +203,7 @@ export interface AoE2DataProvider {
     eloRange?: [number, number]
   ): Promise<CivStats[]>;
   getCivDetail(civSlug: string, mode?: GameMode): Promise<CivDetail | null>;
-  getMapStats(mode: GameMode): Promise<MapStats[]>;
+  getMapStats(mode: GameMode, eloRange?: [number, number]): Promise<MapStats[]>;
   getCivPatchHistory(civSlug: string, mode?: GameMode): Promise<CivPatchPoint[]>;
   getMetaReport(mode?: GameMode): Promise<MetaReport>;
 }
