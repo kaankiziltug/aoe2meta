@@ -17,17 +17,21 @@ const DAILY_DIR = resolve(
   "../src/data/daily-stats"
 );
 
-const MODES_TO_FETCH = ["rm-1v1", "rm-team"] as const;
+const MODES_TO_FETCH = ["rm-1v1", "rm-team", "ew-1v1", "ew-team"] as const;
 type Mode = (typeof MODES_TO_FETCH)[number];
 
 const COMPANION_LEADERBOARD: Record<Mode, string> = {
-  "rm-1v1": "rm_1v1",
+  "rm-1v1":  "rm_1v1",
   "rm-team": "rm_team",
+  "ew-1v1":  "ew_1v1",
+  "ew-team": "ew_team",
 };
 
 const MS_PARAMS: Record<Mode, { versus: string; matchType: string; teamSize: string }> = {
-  "rm-1v1": { versus: "players", matchType: "ranked", teamSize: "1v1" },
-  "rm-team": { versus: "team", matchType: "ranked", teamSize: "2v2" },
+  "rm-1v1":  { versus: "players", matchType: "ranked",   teamSize: "1v1" },
+  "rm-team": { versus: "team",    matchType: "ranked",   teamSize: "2v2" },
+  "ew-1v1":  { versus: "players", matchType: "unranked", teamSize: "1v1" },
+  "ew-team": { versus: "team",    matchType: "unranked", teamSize: "2v2" },
 };
 
 // Spread ELO sampling: covers rank 1 → ~45,000
@@ -44,6 +48,7 @@ interface DailyRecord {
   /** civ name */ c: string;
   /** won: 1 or 0 */ w: number;
   /** elo rating */ e: number;
+  /** map slug (e.g. "arabia") */ m?: string;
 }
 
 interface DailyFile {
@@ -67,6 +72,7 @@ interface CompanionMatch {
   matchId: number;
   started: string;
   leaderboardId: string;
+  mapName?: string;
   teams: { players: CompanionPlayer[] }[];
 }
 
@@ -185,10 +191,12 @@ async function fetchModeDataByDate(
       for (const player of team.players ?? []) {
         const name = capitalizeCivName(player.civName || player.civ);
         if (!name || name.startsWith("[")) continue;
+        const mapSlug = m.mapName?.toLowerCase().replace(/\s+/g, "_") || undefined;
         bucket.records.push({
           c: name,
           w: player.won ? 1 : 0,
           e: player.rating || 0,
+          ...(mapSlug ? { m: mapSlug } : {}),
         });
       }
     }

@@ -1060,7 +1060,7 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
           const raw = JSON.parse(
             readFileSync(resolve(dailyDir, file), "utf-8")
           ) as {
-            modes: Record<string, { records: { c: string; w: number; e: number }[] }>;
+            modes: Record<string, { records: { c: string; w: number; e: number; m?: string }[] }>;
           };
           const modeData = raw.modes?.[mode];
           if (!modeData?.records) continue;
@@ -1348,84 +1348,94 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async getMapStats(mode: GameMode): Promise<MapStats[]> {
+    const result = this.readDailyMaps(mode);
+    return result;
+  }
+
+  /**
+   * Build map statistics from daily sliding-window JSON files.
+   * Each record may optionally have an `m` (map slug) field added since
+   * the fetch-daily-stats script was updated to include it.
+   */
+  private readDailyMaps(mode: GameMode): MapStats[] {
     try {
-      const CACHE_KEY = `__aoe2_mapstats_${mode}__`;
-      const CACHE_TTL = 60 * 60 * 1000;
-      const g = globalThis as Record<string, unknown>;
-      const cached = g[CACHE_KEY] as { data: MapStats[]; ts: number } | undefined;
-      if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
+      const dailyDir = resolve(process.cwd(), "src/data/daily-stats");
+      if (!existsSync(dailyDir)) return [];
 
-      // Reuse civ stats computation — fetch same match dataset
-      const modeParams = gameModeToParams(mode);
-      const lbRes = await this.fetchLeaderboard({ ...modeParams, searchPlayer: "", page: 1, count: 50 });
-      const profileIds = (lbRes.items ?? []).map((p) => p.rlUserId).filter(Boolean);
-      if (profileIds.length === 0) return [];
+      const files = readdirSync(dailyDir)
+        .filter((f: string) => f.endsWith(".json"))
+        .sort()
+        .slice(-31);
 
-      const leaderboardId = gameModeToCompanionLeaderboard(mode);
-      const BATCH_SIZE = 10;
-      const allMatches: CompanionMatch[] = [];
-      for (let i = 0; i < profileIds.length; i += BATCH_SIZE) {
-        const batch = profileIds.slice(i, i + BATCH_SIZE);
-        const results = await Promise.allSettled(batch.map((pid) =>
-          fetch(
-            `${COMPANION_API}/matches?profile_ids=${pid}&count=20`,
-            { headers: { "User-Agent": "AoE2Insights/1.0" }, next: { revalidate: 3600 } }
-          ).then((r) => r.json() as Promise<CompanionMatchesResponse>).catch(() => ({ matches: [] }))
-        ));
-        for (const r of results) {
-          if (r.status === "fulfilled") {
-            const filtered = (r.value?.matches ?? []).filter((m) => m.leaderboardId === leaderboardId);
-            allMatches.push(...filtered);
+      if (files.length === 0) return [];
+
+      type CivEntry = { wins: number; games: number };
+      // mapSlug → civName → { wins, games }
+      const mapIndex = new Map<string, Map<string, CivEntry>>();
+      // mapSlug → total match count (each match counted once)
+      const mapMatches = new Map<string, number>();
+
+      for (const file of files) {
+        try {
+          const raw = JSON.parse(
+            readFileSync(resolve(dailyDir, file), "utf-8")
+          ) as {
+            modes: Record<string, {
+              matchCount: number;
+              records: { c: string; w: number; e: number; m?: string }[];
+            }>;
+          };
+          const modeData = raw.modes?.[mode];
+          if (!modeData?.records) continue;
+
+          // Count matches per map from matchCount * map distribution
+          // Since each match has 2 players, we derive map games from records
+          // Build a per-match counter using records with same map
+          const mapRecordCounts = new Map<string, number>();
+          for (const rec of modeData.records) {
+            if (!rec.m) continue;
+            mapRecordCounts.set(rec.m, (mapRecordCounts.get(rec.m) ?? 0) + 1);
           }
+          // Each match produces 2 records (1v1) or 4+ (team)
+          // Approximate match count: records / players-per-match
+          const playersPerMatch = (mode === "rm-1v1" || mode === "ew-1v1") ? 2 : 4;
+          for (const [mapSlug, recordCount] of mapRecordCounts) {
+            const approxMatches = Math.round(recordCount / playersPerMatch);
+            mapMatches.set(mapSlug, (mapMatches.get(mapSlug) ?? 0) + approxMatches);
+          }
+
+          // Aggregate civ stats per map
+          for (const rec of modeData.records) {
+            if (!rec.m || !rec.c || rec.c.startsWith("[")) continue;
+            if (!mapIndex.has(rec.m)) mapIndex.set(rec.m, new Map());
+            const civMap = mapIndex.get(rec.m)!;
+            const entry = civMap.get(rec.c) ?? { wins: 0, games: 0 };
+            entry.games++;
+            if (rec.w) entry.wins++;
+            civMap.set(rec.c, entry);
+          }
+        } catch {
+          continue;
         }
       }
-      // Deduplicate
-      const seen2 = new Set<string>();
-      const uniqueMatches2 = allMatches.filter((m) => {
-        const key = String(m.matchId);
-        if (seen2.has(key)) return false;
-        seen2.add(key);
-        return true;
-      });
 
-      // map slug → civ name → { wins, games }
-      type CivEntry = { wins: number; games: number };
-      const mapIndex = new Map<string, Map<string, CivEntry>>();
-      const mapTotals = new Map<string, number>();
+      const MIN_MAP_RECORDS = 20; // min total records to show a map
+      const MIN_CIV_RECORDS = 5;  // min records to show a civ for a map
 
-      for (const match of uniqueMatches2) {
-          const rawMap = match.mapName?.toLowerCase().replace(/\s+/g, "_") ?? "";
-          if (!rawMap) continue;
-          if (!mapIndex.has(rawMap)) mapIndex.set(rawMap, new Map());
-          const civMap = mapIndex.get(rawMap)!;
-          mapTotals.set(rawMap, (mapTotals.get(rawMap) ?? 0) + 1);
-
-          for (const team of match.teams ?? []) {
-            for (const player of team.players ?? []) {
-              const civName = capitalizeCivName(player.civName || player.civ);
-              if (!civName) continue;
-              const entry = civMap.get(civName) ?? { wins: 0, games: 0 };
-              entry.games++;
-              if (player.won) entry.wins++;
-              civMap.set(civName, entry);
-            }
-          }
-      }
-
-      const result = Array.from(mapIndex.entries())
-        .filter(([, civs]) => {
-          const total = [...civs.values()].reduce((s, v) => s + v.games, 0);
-          return total >= 50;
+      return Array.from(mapIndex.entries())
+        .filter(([, civMap]) => {
+          const total = [...civMap.values()].reduce((s, v) => s + v.games, 0);
+          return total >= MIN_MAP_RECORDS;
         })
         .map(([mapSlug, civMap]) => {
-          const totalGames = mapTotals.get(mapSlug) ?? 0;
+          const totalGames = mapMatches.get(mapSlug) ?? 0;
           const civs = [...civMap.entries()]
-            .filter(([, v]) => v.games >= 10)
+            .filter(([, v]) => v.games >= MIN_CIV_RECORDS)
             .map(([civName, v]) => ({
               civName,
               winRate: (v.wins / v.games) * 100,
               numGames: v.games,
-              playRate: (v.games / (totalGames * 2)) * 100,
+              playRate: (v.games / ([...civMap.values()].reduce((s, e) => s + e.games, 0))) * 100,
             }))
             .sort((a, b) => b.winRate - a.winRate);
 
@@ -1438,9 +1448,6 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
           };
         })
         .sort((a, b) => b.totalGames - a.totalGames);
-
-      g[CACHE_KEY] = { data: result, ts: Date.now() };
-      return result;
     } catch {
       return [];
     }
