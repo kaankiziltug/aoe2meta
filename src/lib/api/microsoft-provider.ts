@@ -837,7 +837,11 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
           k.replace(/\s+/g, "_") === civSlug ||
           civStats[k].civ_name?.replace(/\s+/g, "_") === civSlug
       );
-      if (!civKey) return null;
+
+      // ── Fallback for new DLC civs not in aoestats ────────────────────────
+      if (!civKey) {
+        return this.getCivDetailFromDaily(civSlug, mode);
+      }
 
       const civ = civStats[civKey];
       const civName = capitalizeCivName(civ.civ_name ?? civKey);
@@ -912,6 +916,73 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Build a partial CivDetail from our own daily/accumulated data.
+   * Used as fallback for new DLC civs not yet in aoestats.io.
+   */
+  private getCivDetailFromDaily(civSlug: string, mode: GameMode): CivDetail | null {
+    // slug → display name: "mapuche" → "Mapuche", "el_cid" → "El Cid"
+    const civName = civSlug
+      .split(/[_\s]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
+    // Read from daily sliding-window files
+    const dailyStats = this.readDailyStats(mode);
+    const fromDaily = dailyStats?.find(
+      (c) => c.civName.toLowerCase() === civName.toLowerCase()
+    );
+
+    const winRate = fromDaily?.winRate ?? null;
+    const totalGames = fromDaily?.totalGames ?? 0;
+
+    if (!winRate || totalGames < 5) return null;
+
+    // Build ELO breakdown from daily files with ELO filtering
+    const ELO_RANGES: [string, string, [number, number] | undefined][] = [
+      ["all", "All Elos", undefined],
+      ["low", "<800", [0, 799]],
+      ["med_low", "800–1100", [800, 1099]],
+      ["medium", "1100–1400", [1100, 1399]],
+      ["med_high", "1400–1800", [1400, 1799]],
+      ["high", "1800+", [1800, 9999]],
+    ];
+
+    const eloBreakdown: CivEloBreakdown[] = ELO_RANGES.map(([elo, eloLabel, range]) => {
+      const filtered = this.readDailyStats(mode, range);
+      const entry = filtered?.find(
+        (c) => c.civName.toLowerCase() === civName.toLowerCase()
+      );
+      return {
+        elo,
+        eloLabel,
+        winRate: entry?.winRate ?? 0,
+        numGames: entry?.totalGames ?? 0,
+        playRate: entry?.playRate ?? 0,
+        rank: 0,
+      };
+    });
+
+    return {
+      civName,
+      civSlug,
+      rank: 0,
+      winRate,
+      playRate: fromDaily?.playRate ?? 0,
+      totalGames,
+      eloBreakdown,
+      topMaps: [],
+      bottomMaps: [],
+      bestMatchups: [],
+      worstMatchups: [],
+      byGameLength: [],
+      avgFeudalTime: 0,
+      avgCastleTime: 0,
+      avgImperialTime: 0,
+      avgGameLength: 0,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
