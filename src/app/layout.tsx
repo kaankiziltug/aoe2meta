@@ -40,6 +40,11 @@ export const metadata: Metadata = {
     "age of empires 2 leaderboard",
     "aoe2de stats",
   ],
+  verification: {
+    other: {
+      "google-adsense-account": "ca-pub-9719471971523631",
+    },
+  },
   authors: [{ name: "AoE2Meta" }],
   creator: "AoE2Meta",
   publisher: "AoE2Meta",
