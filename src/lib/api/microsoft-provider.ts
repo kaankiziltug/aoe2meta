@@ -895,14 +895,54 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
         };
       });
 
+      // ── Override win rate + ELO breakdown with our daily data ──────────────
+      // aoestats.io is from 2023; our daily files have current-patch live data.
+      // We keep aoestats for rich details (maps, matchups) but show consistent
+      // numbers with the tier list / stats page.
+      const dailyAll = this.readDailyStats(mode);
+      const dailyEntry = dailyAll?.find(
+        (c) => c.civName.toLowerCase() === civName.toLowerCase()
+      );
+
+      const finalWinRate = dailyEntry?.winRate ?? civ.win_rate * 100;
+      const finalTotalGames = dailyEntry?.totalGames ?? civ.num_games;
+      const finalPlayRate = dailyEntry?.playRate ?? civ.play_rate * 100;
+
+      // Build ELO breakdown from daily sliding-window files
+      const ELO_RANGES_DAILY: [string, string, [number, number] | undefined][] = [
+        ["all", "All Elos", undefined],
+        ["low", "<800", [0, 799]],
+        ["med_low", "800–1100", [800, 1099]],
+        ["medium", "1100–1400", [1100, 1399]],
+        ["med_high", "1400–1800", [1400, 1799]],
+        ["high", "1800+", [1800, 9999]],
+      ];
+
+      const dailyEloBreakdown: CivEloBreakdown[] = ELO_RANGES_DAILY.map(([elo, eloLabel, range]) => {
+        const filtered = this.readDailyStats(mode, range);
+        const entry = filtered?.find(
+          (c) => c.civName.toLowerCase() === civName.toLowerCase()
+        );
+        // Fall back to aoestats elo breakdown if daily has no data for that bucket
+        const aoestatsElo = eloBreakdown.find((e) => e.elo === elo);
+        return {
+          elo,
+          eloLabel,
+          winRate: entry?.winRate ?? aoestatsElo?.winRate ?? 0,
+          numGames: entry?.totalGames ?? aoestatsElo?.numGames ?? 0,
+          playRate: entry?.playRate ?? aoestatsElo?.playRate ?? 0,
+          rank: aoestatsElo?.rank ?? 0,
+        };
+      });
+
       return {
         civName,
         civSlug,
         rank: civ.rank,
-        winRate: civ.win_rate * 100,
-        playRate: civ.play_rate * 100,
-        totalGames: civ.num_games,
-        eloBreakdown,
+        winRate: finalWinRate,
+        playRate: finalPlayRate,
+        totalGames: finalTotalGames,
+        eloBreakdown: dailyEloBreakdown,
         topMaps: mapEntries.slice(0, 6),
         bottomMaps: mapEntries.slice(-5).reverse(),
         bestMatchups: matchupEntries.slice(0, 8),
