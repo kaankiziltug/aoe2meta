@@ -29,11 +29,17 @@ jobs:
         run: npm run stats:fetch
         timeout-minutes: 15
 
+      - name: Run map stats backfill (weekly — Sundays)
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.event.schedule, '0 2') && contains(toJSON(github.event), 'Sun')
+        run: npm run maps:backfill
+        timeout-minutes: 25
+        continue-on-error: true
+
       - name: Commit updated stats
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/data/daily-stats/
+          git add src/data/daily-stats/ src/data/map-stats.json
           git diff --cached --quiet && echo "No new data, skipping commit" || \
             git commit -m "chore: daily stats $(date -u +%Y-%m-%d) [skip ci]"
 

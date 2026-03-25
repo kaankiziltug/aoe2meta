@@ -1353,74 +1353,76 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
   }
 
   /**
-   * Build map statistics from daily sliding-window JSON files.
-   * Each record may optionally have an `m` (map slug) field added since
-   * the fetch-daily-stats script was updated to include it.
+   * Build map statistics from:
+   * 1. src/data/map-stats.json — accumulated backfill (large sample)
+   * 2. src/data/daily-stats/*.json — recent files with `m` field (last 31 days)
+   *
+   * Both sources are merged so we always have rich data even before the
+   * daily files accumulate enough map records.
    */
   private readDailyMaps(mode: GameMode): MapStats[] {
     try {
-      const dailyDir = resolve(process.cwd(), "src/data/daily-stats");
-      if (!existsSync(dailyDir)) return [];
-
-      const files = readdirSync(dailyDir)
-        .filter((f: string) => f.endsWith(".json"))
-        .sort()
-        .slice(-31);
-
-      if (files.length === 0) return [];
-
       type CivEntry = { wins: number; games: number };
-      // mapSlug → civName → { wins, games }
+      // mapSlug → civName → aggregated { wins, games }
       const mapIndex = new Map<string, Map<string, CivEntry>>();
-      // mapSlug → total match count (each match counted once)
-      const mapMatches = new Map<string, number>();
 
-      for (const file of files) {
+      // ── 1. Load accumulated map-stats.json (backfill) ──────────────────
+      const mapStatsFile = resolve(process.cwd(), "src/data/map-stats.json");
+      if (existsSync(mapStatsFile)) {
         try {
-          const raw = JSON.parse(
-            readFileSync(resolve(dailyDir, file), "utf-8")
-          ) as {
-            modes: Record<string, {
-              matchCount: number;
-              records: { c: string; w: number; e: number; m?: string }[];
-            }>;
+          const raw = JSON.parse(readFileSync(mapStatsFile, "utf-8")) as {
+            modes?: Record<string, Record<string, Record<string, CivEntry>>>;
           };
-          const modeData = raw.modes?.[mode];
-          if (!modeData?.records) continue;
+          const modeData = raw.modes?.[mode] ?? {};
+          for (const [mapSlug, civs] of Object.entries(modeData)) {
+            if (!mapIndex.has(mapSlug)) mapIndex.set(mapSlug, new Map());
+            const civMap = mapIndex.get(mapSlug)!;
+            for (const [civName, v] of Object.entries(civs)) {
+              const existing = civMap.get(civName) ?? { wins: 0, games: 0 };
+              existing.wins  += v.wins;
+              existing.games += v.games;
+              civMap.set(civName, existing);
+            }
+          }
+        } catch { /* ignore corrupt file */ }
+      }
 
-          // Count matches per map from matchCount * map distribution
-          // Since each match has 2 players, we derive map games from records
-          // Build a per-match counter using records with same map
-          const mapRecordCounts = new Map<string, number>();
-          for (const rec of modeData.records) {
-            if (!rec.m) continue;
-            mapRecordCounts.set(rec.m, (mapRecordCounts.get(rec.m) ?? 0) + 1);
-          }
-          // Each match produces 2 records (1v1) or 4+ (team)
-          // Approximate match count: records / players-per-match
-          const playersPerMatch = (mode === "rm-1v1" || mode === "ew-1v1") ? 2 : 4;
-          for (const [mapSlug, recordCount] of mapRecordCounts) {
-            const approxMatches = Math.round(recordCount / playersPerMatch);
-            mapMatches.set(mapSlug, (mapMatches.get(mapSlug) ?? 0) + approxMatches);
-          }
+      // ── 2. Layer in recent daily files (last 31 days) ──────────────────
+      const dailyDir = resolve(process.cwd(), "src/data/daily-stats");
+      if (existsSync(dailyDir)) {
+        const files = readdirSync(dailyDir)
+          .filter((f: string) => f.endsWith(".json"))
+          .sort()
+          .slice(-31);
 
-          // Aggregate civ stats per map
-          for (const rec of modeData.records) {
-            if (!rec.m || !rec.c || rec.c.startsWith("[")) continue;
-            if (!mapIndex.has(rec.m)) mapIndex.set(rec.m, new Map());
-            const civMap = mapIndex.get(rec.m)!;
-            const entry = civMap.get(rec.c) ?? { wins: 0, games: 0 };
-            entry.games++;
-            if (rec.w) entry.wins++;
-            civMap.set(rec.c, entry);
-          }
-        } catch {
-          continue;
+        for (const file of files) {
+          try {
+            const raw = JSON.parse(
+              readFileSync(resolve(dailyDir, file), "utf-8")
+            ) as {
+              modes: Record<string, {
+                records: { c: string; w: number; e: number; m?: string }[];
+              }>;
+            };
+            const modeData = raw.modes?.[mode];
+            if (!modeData?.records) continue;
+
+            for (const rec of modeData.records) {
+              if (!rec.m || !rec.c || rec.c.startsWith("[")) continue;
+              if (!mapIndex.has(rec.m)) mapIndex.set(rec.m, new Map());
+              const civMap = mapIndex.get(rec.m)!;
+              const entry = civMap.get(rec.c) ?? { wins: 0, games: 0 };
+              entry.games++;
+              if (rec.w) entry.wins++;
+              civMap.set(rec.c, entry);
+            }
+          } catch { continue; }
         }
       }
 
-      const MIN_MAP_RECORDS = 20; // min total records to show a map
-      const MIN_CIV_RECORDS = 5;  // min records to show a civ for a map
+      const MIN_MAP_RECORDS = 30;
+      const MIN_CIV_RECORDS = 10;
+      const playersPerMatch = (mode === "rm-1v1" || mode === "ew-1v1") ? 2 : 4;
 
       return Array.from(mapIndex.entries())
         .filter(([, civMap]) => {
@@ -1428,14 +1430,15 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
           return total >= MIN_MAP_RECORDS;
         })
         .map(([mapSlug, civMap]) => {
-          const totalGames = mapMatches.get(mapSlug) ?? 0;
+          const totalSlots = [...civMap.values()].reduce((s, v) => s + v.games, 0);
+          const totalGames = Math.round(totalSlots / playersPerMatch);
           const civs = [...civMap.entries()]
             .filter(([, v]) => v.games >= MIN_CIV_RECORDS)
             .map(([civName, v]) => ({
               civName,
               winRate: (v.wins / v.games) * 100,
               numGames: v.games,
-              playRate: (v.games / ([...civMap.values()].reduce((s, e) => s + e.games, 0))) * 100,
+              playRate: (v.games / totalSlots) * 100,
             }))
             .sort((a, b) => b.winRate - a.winRate);
 

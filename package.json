@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "stats:fetch": "tsx scripts/fetch-daily-stats.mts"
+    "stats:fetch": "tsx scripts/fetch-daily-stats.mts",
+    "maps:backfill": "tsx scripts/backfill-maps.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
