@@ -1347,37 +1347,37 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
   // MAP STATS  (computed from aoe2companion match data — includes all DLC civs)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  async getMapStats(mode: GameMode): Promise<MapStats[]> {
-    const result = this.readDailyMaps(mode);
-    return result;
+  async getMapStats(mode: GameMode, eloRange?: [number, number]): Promise<MapStats[]> {
+    return this.readDailyMaps(mode, eloRange);
   }
 
   /**
    * Build map statistics from:
-   * 1. src/data/map-stats.json — accumulated backfill (large sample)
-   * 2. src/data/daily-stats/*.json — recent files with `m` field (last 31 days)
-   *
-   * Both sources are merged so we always have rich data even before the
-   * daily files accumulate enough map records.
+   * 1. src/data/map-stats.json — accumulated backfill, keyed by ELO bucket
+   * 2. src/data/daily-stats/*.json — recent files with `m` + `e` fields
    */
-  private readDailyMaps(mode: GameMode): MapStats[] {
+  private readDailyMaps(mode: GameMode, eloRange?: [number, number]): MapStats[] {
     try {
       type CivEntry = { wins: number; games: number };
-      // mapSlug → civName → aggregated { wins, games }
       const mapIndex = new Map<string, Map<string, CivEntry>>();
 
-      // ── 1. Load accumulated map-stats.json (backfill) ──────────────────
+      // Convert eloRange to bucket key for map-stats.json lookup
+      const eloKey = eloRange ? eloRangeToAoestatsGroup(eloRange) : "all";
+
+      // ── 1. Load accumulated map-stats.json ─────────────────────────────
       const mapStatsFile = resolve(process.cwd(), "src/data/map-stats.json");
       if (existsSync(mapStatsFile)) {
         try {
           const raw = JSON.parse(readFileSync(mapStatsFile, "utf-8")) as {
-            modes?: Record<string, Record<string, Record<string, CivEntry>>>;
+            modes?: Record<string, Record<string, Record<string, Record<string, CivEntry>>>>;
           };
           const modeData = raw.modes?.[mode] ?? {};
-          for (const [mapSlug, civs] of Object.entries(modeData)) {
+          for (const [mapSlug, eloBuckets] of Object.entries(modeData)) {
+            // Try exact bucket, fall back to "all"
+            const bucket = eloBuckets[eloKey] ?? (eloKey !== "all" ? {} : eloBuckets["all"] ?? {});
             if (!mapIndex.has(mapSlug)) mapIndex.set(mapSlug, new Map());
             const civMap = mapIndex.get(mapSlug)!;
-            for (const [civName, v] of Object.entries(civs)) {
+            for (const [civName, v] of Object.entries(bucket)) {
               const existing = civMap.get(civName) ?? { wins: 0, games: 0 };
               existing.wins  += v.wins;
               existing.games += v.games;
@@ -1409,6 +1409,8 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
 
             for (const rec of modeData.records) {
               if (!rec.m || !rec.c || rec.c.startsWith("[")) continue;
+              // ELO filter on daily records
+              if (eloRange && (rec.e < eloRange[0] || rec.e > eloRange[1])) continue;
               if (!mapIndex.has(rec.m)) mapIndex.set(rec.m, new Map());
               const civMap = mapIndex.get(rec.m)!;
               const entry = civMap.get(rec.c) ?? { wins: 0, games: 0 };

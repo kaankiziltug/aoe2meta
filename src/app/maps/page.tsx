@@ -99,16 +99,35 @@ function MapCard({ map }: { map: MapStats }) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
+const ELO_OPTIONS = [
+  { key: "all",      label: "All ELOs" },
+  { key: "low",      label: "< 800"    },
+  { key: "med_low",  label: "800–1100" },
+  { key: "medium",   label: "1100–1400"},
+  { key: "med_high", label: "1400–1800"},
+  { key: "high",     label: "1800+"    },
+] as const;
+
+const ELO_RANGES: Record<string, [number, number] | undefined> = {
+  low:      [0,    799],
+  med_low:  [800,  1099],
+  medium:   [1100, 1399],
+  med_high: [1400, 1799],
+  high:     [1800, 9999],
+};
+
 export default async function MapsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; elo?: string }>;
 }) {
-  const { mode: modeParam } = await searchParams;
+  const { mode: modeParam, elo: eloParam } = await searchParams;
   const mode = (modeParam ?? "rm-1v1") as GameMode;
+  const eloKey = eloParam ?? "all";
+  const eloRange = ELO_RANGES[eloKey];
 
   const provider = createDataProvider();
-  const maps = await provider.getMapStats(mode);
+  const maps = await provider.getMapStats(mode, eloRange);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-10">
@@ -118,19 +137,36 @@ export default async function MapsPage({
           Map Statistics
         </h1>
         <p className="mt-1 text-muted-foreground">
-          Best and worst civilizations per map
+          Best and worst civilizations per map · Last 30 days
         </p>
       </div>
 
-      {/* Mode tabs */}
-      <div className="mb-8">
-        <ModeSelector currentMode={mode} />
+      {/* Filters row */}
+      <div className="mb-8 flex flex-wrap items-center gap-4">
+        <ModeSelector currentMode={mode} currentElo={eloKey} />
+
+        {/* ELO selector */}
+        <div className="flex flex-wrap gap-1.5">
+          {ELO_OPTIONS.map((opt) => (
+            <a
+              key={opt.key}
+              href={`/maps?mode=${mode}&elo=${opt.key}`}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                eloKey === opt.key
+                  ? "bg-orange-500 text-white"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {opt.label}
+            </a>
+          ))}
+        </div>
       </div>
 
       {/* Map grid */}
       {maps.length === 0 ? (
         <p className="text-center text-muted-foreground py-16">
-          No map data available. Check back later.
+          No map data available for this ELO range yet. Check back later.
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

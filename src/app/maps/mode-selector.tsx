@@ -13,16 +13,17 @@ const MODES: { id: GameMode; label: string }[] = [
 
 interface ModeSelectorProps {
   currentMode: GameMode;
+  currentElo?: string;
 }
 
-export function ModeSelector({ currentMode }: ModeSelectorProps) {
+export function ModeSelector({ currentMode, currentElo = "all" }: ModeSelectorProps) {
   const router = useRouter();
 
   return (
     <Tabs
       value={currentMode}
       onValueChange={(v) => {
-        router.push(`/maps?mode=${v}`);
+        router.push(`/maps?mode=${v}&elo=${currentElo}`);
       }}
     >
       <TabsList className="h-9">
