@@ -181,6 +181,33 @@ export interface MetaReport {
   allChanges: CivChange[];      // all civs sorted by change desc
 }
 
+// ── Strategy / Opening stats ──────────────────────────────────────────────────
+
+export interface OpeningStat {
+  opening: string;
+  wins: number;
+  games: number;
+  winRate: number;
+}
+
+export interface CivOpeningStats {
+  civName: string;
+  totalGames: number;
+  openings: OpeningStat[]; // sorted by games desc
+}
+
+export interface StrategyMapStats {
+  mapSlug: string;
+  mapName: string;
+  eloLabel: string;
+  totalGames: number;
+  updatedAt: string;
+  /** Top openings across ALL civs (aggregated) */
+  globalOpenings: OpeningStat[];
+  /** Per-civ breakdown (only civs with ≥20 games) */
+  civs: CivOpeningStats[];
+}
+
 export interface AoE2DataProvider {
   searchPlayers(query: string): Promise<Player[]>;
   getLeaderboard(
@@ -206,4 +233,10 @@ export interface AoE2DataProvider {
   getMapStats(mode: GameMode, eloRange?: [number, number]): Promise<MapStats[]>;
   getCivPatchHistory(civSlug: string, mode?: GameMode): Promise<CivPatchPoint[]>;
   getMetaReport(mode?: GameMode): Promise<MetaReport>;
+  getStrategyStats(
+    mode: GameMode,
+    mapSlug: string,
+    eloLabel: string
+  ): Promise<StrategyMapStats | null>;
+  getStrategyMapList(mode: GameMode): Promise<string[]>;
 }

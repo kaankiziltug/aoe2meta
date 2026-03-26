@@ -12,6 +12,7 @@ import {
   CivChange,
   CivDetail,
   CivEloBreakdown,
+  CivOpeningStats,
   CivPatchPoint,
   CivStats,
   GameMode,
@@ -21,9 +22,11 @@ import {
   Match,
   MatchPlayer,
   MetaReport,
+  OpeningStat,
   Player,
   PlayerProfile,
   RatingPoint,
+  StrategyMapStats,
 } from "./types";
 import { MockDataProvider } from "./mock-data";
 import { existsSync, readFileSync, readdirSync } from "fs";
@@ -1526,6 +1529,117 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
   // ═══════════════════════════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STRATEGY STATS  (reads from src/data/strategy-stats.json)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Raw shape of strategy-stats.json produced by scripts/fetch-strategy-stats.py
+   */
+  private readStrategyFile(): Record<string, unknown> | null {
+    try {
+      const file = resolve(process.cwd(), "src/data/strategy-stats.json");
+      if (!existsSync(file)) return null;
+      return JSON.parse(readFileSync(file, "utf-8"));
+    } catch {
+      return null;
+    }
+  }
+
+  async getStrategyMapList(mode: GameMode = "rm-1v1"): Promise<string[]> {
+    const raw = this.readStrategyFile();
+    if (!raw) return [];
+    const modeData = raw[mode] as Record<string, unknown> | undefined;
+    if (!modeData) return [];
+    return Object.keys(modeData).sort();
+  }
+
+  async getStrategyStats(
+    mode: GameMode = "rm-1v1",
+    mapSlug: string = "arabia",
+    eloLabel: string = "all"
+  ): Promise<StrategyMapStats | null> {
+    try {
+      const raw = this.readStrategyFile();
+      if (!raw) return null;
+
+      const updatedAt = (raw["updated"] as string) ?? "";
+      // raw[mode][mapSlug][eloLabel][civName][opening] = { wins, games }
+      // Use unknown cast to avoid nested Record inference conflict
+      const modeRaw = raw[mode];
+      if (!modeRaw || typeof modeRaw !== "object") return null;
+      const mapRaw = (modeRaw as Record<string, unknown>)[mapSlug];
+      if (!mapRaw || typeof mapRaw !== "object") return null;
+      const eloRaw = (mapRaw as Record<string, unknown>)[eloLabel]
+                  ?? (mapRaw as Record<string, unknown>)["all"];
+      if (!eloRaw || typeof eloRaw !== "object") return null;
+      const eloBucket = eloRaw as Record<string, Record<string, { wins: number; games: number }>>;
+
+      const MIN_GAMES = 20;
+
+      // Aggregate per civ
+      const civs: CivOpeningStats[] = [];
+      const globalMap = new Map<string, { wins: number; games: number }>();
+
+      for (const [civName, openingsRaw] of Object.entries(eloBucket)) {
+        let totalGames = 0;
+        const openings: OpeningStat[] = [];
+
+        for (const [opening, counts] of Object.entries(openingsRaw)) {
+          const { wins, games } = counts;
+          totalGames += games;
+          // Accumulate global
+          const g = globalMap.get(opening) ?? { wins: 0, games: 0 };
+          g.wins += wins;
+          g.games += games;
+          globalMap.set(opening, g);
+
+          openings.push({
+            opening,
+            wins,
+            games,
+            winRate: games > 0 ? (wins / games) * 100 : 0,
+          });
+        }
+
+        if (totalGames < MIN_GAMES) continue;
+
+        openings.sort((a, b) => b.games - a.games);
+        civs.push({ civName, totalGames, openings });
+      }
+
+      civs.sort((a, b) => b.totalGames - a.totalGames);
+
+      const totalGames = civs.reduce((s, c) => s + c.totalGames, 0) / 2; // 2 players per match
+
+      const globalOpenings: OpeningStat[] = [...globalMap.entries()]
+        .map(([opening, { wins, games }]) => ({
+          opening,
+          wins,
+          games,
+          winRate: games > 0 ? (wins / games) * 100 : 0,
+        }))
+        .sort((a, b) => b.games - a.games);
+
+      const mapName = mapSlug
+        .split("_")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+
+      return {
+        mapSlug,
+        mapName,
+        eloLabel,
+        totalGames: Math.round(totalGames),
+        updatedAt,
+        globalOpenings,
+        civs,
+      };
+    } catch {
+      return null;
+    }
+  }
 
   private findPlayerInCompanionMatch(
     m: CompanionMatch,

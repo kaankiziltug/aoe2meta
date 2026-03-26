@@ -13,6 +13,7 @@ import {
   Player,
   PlayerProfile,
   RatingPoint,
+  StrategyMapStats,
 } from "./types";
 import { CIVILIZATIONS, MAPS } from "../constants";
 
@@ -328,5 +329,13 @@ export class MockDataProvider implements AoE2DataProvider {
       biggestFallers: [],
       allChanges: [],
     };
+  }
+
+  async getStrategyStats(): Promise<StrategyMapStats | null> {
+    return null;
+  }
+
+  async getStrategyMapList(): Promise<string[]> {
+    return [];
   }
 }
