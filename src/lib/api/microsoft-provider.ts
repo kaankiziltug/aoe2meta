@@ -1408,8 +1408,8 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
         }
       }
 
-      const MIN_MAP_RECORDS = 30;
-      const MIN_CIV_RECORDS = 10;
+      const MIN_MAP_RECORDS = 1500;
+      const MIN_CIV_RECORDS = 50;
       const playersPerMatch = (mode === "rm-1v1" || mode === "ew-1v1") ? 2 : 4;
 
       return Array.from(mapIndex.entries())
