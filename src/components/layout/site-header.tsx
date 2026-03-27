@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { href: "/stats", label: "Statistics", icon: BarChart3 },
   { href: "/tier-list", label: "Tier List", icon: Layers },
   { href: "/maps", label: "Maps", icon: Map },
-  { href: "/meta", label: "Meta", icon: TrendingUp },
   { href: "/compare",  label: "Compare",  icon: BarChart2 },
 ];
 
