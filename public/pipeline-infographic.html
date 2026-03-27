@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AoE2Meta — Data Pipeline Infographic</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --orange:    #f97316;
+      --orange-dim:#ea580c;
+      --gold:      #fbbf24;
+      --bg:        #0d0e11;
+      --surface:   #13151a;
+      --surface2:  #1c1f28;
+      --border:    rgba(255,255,255,0.07);
+      --text:      #f0f0f0;
+      --muted:     #8b8fa8;
+      --green:     #22c55e;
+      --blue:      #3b82f6;
+      --purple:    #a855f7;
+      --teal:      #14b8a6;
+      --pink:      #ec4899;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 24px 80px;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(249,115,22,0.12);
+      border: 1px solid rgba(249,115,22,0.3);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--orange);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .header-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--orange);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: .4; transform: scale(.8); }
+    }
+    h1 {
+      font-size: clamp(28px, 5vw, 48px);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #fff 0%, var(--orange) 60%, var(--gold) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      margin-top: 12px;
+      font-size: 15px;
+      color: var(--muted);
+      max-width: 520px;
+      line-height: 1.6;
+    }
+
+    /* ── Funnel wrapper ── */
+    .funnel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      width: 100%;
+      max-width: 720px;
+      position: relative;
+    }
+
+    /* ── Step card ── */
+    .step {
+      position: relative;
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 28px 28px 28px 80px;
+      transition: transform .2s, border-color .2s;
+      overflow: hidden;
+    }
+    .step:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255,255,255,0.14);
+    }
+    /* coloured left accent */
+    .step::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+      border-radius: 16px 0 0 16px;
+      background: var(--accent);
+    }
+    /* faint glow behind card */
+    .step::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      background: radial-gradient(circle at 0% 50%, var(--accent-glow) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── Step number bubble ── */
+    .step-num {
+      position: absolute;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800;
+      color: #fff;
+      box-shadow: 0 0 0 4px var(--accent-ring);
+      flex-shrink: 0;
+      z-index: 1;
+    }
+
+    /* ── Step body ── */
+    .step-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .step-icon {
+      font-size: 22px;
+      line-height: 1;
+    }
+    .step-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.01em;
+    }
+    .step-tag {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 100px;
+      background: var(--accent-tag-bg);
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .step-desc {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.65;
+      max-width: 560px;
+    }
+
+    /* ── Metric pills row ── */
+    .metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .metric {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 11px;
+      font-size: 12px;
+    }
+    .metric-val {
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .metric-lbl {
+      color: var(--muted);
+    }
+
+    /* ── Arrow connector ── */
+    .arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      z-index: 2;
+      margin: -1px 0;
+    }
+    .arrow-line {
+      width: 2px;
+      height: 28px;
+      background: linear-gradient(to bottom, var(--from-color), var(--to-color));
+      opacity: 0.5;
+    }
+    .arrow-head {
+      width: 0; height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 9px solid var(--to-color);
+      opacity: 0.6;
+      margin-top: -1px;
+    }
+
+    /* ── Funnel width steps (visual narrowing) ── */
+    .step:nth-child(1)  { width: 100%; }
+    .step:nth-child(3)  { width: 96%; }
+    .step:nth-child(5)  { width: 91%; }
+    .step:nth-child(7)  { width: 86%; }
+    .step:nth-child(9)  { width: 81%; }
+    .step:nth-child(11) { width: 76%; }
+    .step:nth-child(13) { width: 71%; }
+    .step:nth-child(15) { width: 66%; }
+
+    /* ── Output box ── */
+    .output-box {
+      margin-top: 40px;
+      width: 100%;
+      max-width: 720px;
+      border: 1px solid rgba(249,115,22,0.35);
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(251,191,36,0.05) 100%);
+      padding: 32px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .output-box::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(249,115,22,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .output-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--orange);
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    .output-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    .output-features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+    .feat {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-size: 12.5px;
+      font-weight: 500;
+    }
+    .feat-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 48px;
+      width: 100%;
+      max-width: 720px;
+    }
+    .stat-card {
+      flex: 1;
+      min-width: 140px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 16px;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #fff 0%, var(--orange) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .stat-lbl {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 48px;
+      font-size: 12px;
+      color: var(--muted);
+      opacity: 0.5;
+    }
+
+    /* ── Colour themes per step ── */
+    .s1 { --accent: #3b82f6; --accent-glow: rgba(59,130,246,0.08); --accent-ring: rgba(59,130,246,0.18); --accent-tag-bg: rgba(59,130,246,0.1); }
+    .s2 { --accent: #8b5cf6; --accent-glow: rgba(139,92,246,0.08); --accent-ring: rgba(139,92,246,0.18); --accent-tag-bg: rgba(139,92,246,0.1); }
+    .s3 { --accent: #14b8a6; --accent-glow: rgba(20,184,166,0.08); --accent-ring: rgba(20,184,166,0.18); --accent-tag-bg: rgba(20,184,166,0.1); }
+    .s4 { --accent: #f59e0b; --accent-glow: rgba(245,158,11,0.08); --accent-ring: rgba(245,158,11,0.18); --accent-tag-bg: rgba(245,158,11,0.1); }
+    .s5 { --accent: #ec4899; --accent-glow: rgba(236,72,153,0.08); --accent-ring: rgba(236,72,153,0.18); --accent-tag-bg: rgba(236,72,153,0.1); }
+    .s6 { --accent: #22c55e; --accent-glow: rgba(34,197,94,0.08);  --accent-ring: rgba(34,197,94,0.18);  --accent-tag-bg: rgba(34,197,94,0.1);  }
+    .s7 { --accent: #f97316; --accent-glow: rgba(249,115,22,0.08); --accent-ring: rgba(249,115,22,0.18); --accent-tag-bg: rgba(249,115,22,0.1); }
+    .s8 { --accent: #fbbf24; --accent-glow: rgba(251,191,36,0.08); --accent-ring: rgba(251,191,36,0.18); --accent-tag-bg: rgba(251,191,36,0.1); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-badge">Live Pipeline · Updated Daily</div>
+    <h1>How AoE2Meta<br>Turns Replays Into Insights</h1>
+    <p class="subtitle">From raw leaderboard data to win-rate statistics — every step of the data analysis pipeline explained.</p>
+  </div>
+
+  <!-- Funnel -->
+  <div class="funnel">
+
+    <!-- Step 1 -->
+    <div class="step s1">
+      <div class="step-num">1</div>
+      <div class="step-head">
+        <span class="step-icon">🏆</span>
+        <span class="step-title">Leaderboard Sampling</span>
+        <span class="step-tag">Input</span>
+      </div>
+      <p class="step-desc">We fetch the top 2,500 ranked players from the <strong>Microsoft AoE2 DE Leaderboard API</strong> every day, focusing on 1800+ ELO to ensure competitive, representative games — not casual matches.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">2,500</span><span class="metric-lbl">players sampled</span></div>
+        <div class="metric"><span class="metric-val">1800+</span><span class="metric-lbl">ELO threshold</span></div>
+        <div class="metric"><span class="metric-val">RM 1v1</span><span class="metric-lbl">game mode</span></div>
+      </div>
+    </div>
+
+    <div class="arrow" style="--from-color:#3b82f6; --to-color:#8b5cf6;">
+      <div class="arrow-line"></div><div class="arrow-head"></div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step s2">
+      <div class="step-num">2</div>
+      <div class="step-head">
+        <span class="step-icon">🔍</span>
+        <span class="step-title">Match Discovery</span>
+        <span class="step-tag">Fetch</span>
+      </div>
+      <p class="step-desc">For each sampled player, we query the <strong>AoE2Companion API</strong> to retrieve their recent match IDs — filtering only the last 30 days to keep statistics current with the latest patch.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">30 days</span><span class="metric-lbl">rolling window</span></div>
+        <div class="metric"><span class="metric-val">~15K</span><span class="metric-lbl">match IDs / day</span></div>
+        <div class="metric"><span class="metric-val">dedup</span><span class="metric-lbl">already processed IDs skipped</span></div>
+      </div>
+    </div>
+
+    <div class="arrow" style="--from-color:#8b5cf6; --to-color:#14b8a6;">
+      <div class="arrow-line"></div><div class="arrow-head"></div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step s3">
+      <div class="step-num">3</div>
+      <div class="step-head">
+        <span class="step-icon">📥</span>
+        <span class="step-title">Replay Download</span>
+        <span class="step-tag">Download</span>
+      </div>
+      <p class="step-desc">Each match ID is resolved to a <code style="background:rgba(255,255,255,0.07);padding:2px 6px;border-radius:4px;font-size:12px;">.aoe2record</code> file via the <strong>aoe.ms/replay</strong> endpoint — Microsoft's own replay server. No auth required. The file is a ZIP containing the full match recording.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">aoe.ms/replay</span><span class="metric-lbl">official MS endpoint</span></div>
+        <div class="metric"><span class="metric-val">ZIP</span><span class="metric-lbl">.aoe2record inside</span></div>
+        <div class="metric"><span class="metric-val">~300KB</span><span class="metric-lbl">avg file size</span></div>
+      </div>
+    </div>
+
+    <div class="arrow" style="--from-color:#14b8a6; --to-color:#f59e0b;">
+      <div class="arrow-line"></div><div class="arrow-head"></div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step s4">
+      <div class="step-num">4</div>
+      <div class="step-head">
+        <span class="step-icon">⚙️</span>
+        <span class="step-title">Replay Parsing (mgz)</span>
+        <span class="step-tag">Parse</span>
+      </div>
+      <p class="step-desc">The replay is parsed with <strong>mgz</strong> — the most mature Python library for AoE2 replay files. We extract every in-game action: unit training, building construction, age-up research, technology timing, and EAPM.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">mgz</span><span class="metric-lbl">Python parser</span></div>
+        <div class="metric"><span class="metric-val">~3–8s</span><span class="metric-lbl">per replay</span></div>
+        <div class="metric"><span class="metric-val">all ages</span><span class="metric-lbl">full game extracted</span></div>
+        <div class="metric"><span class="metric-val">100+ action types</span><span class="metric-lbl">unit · building · tech</span></div>
+      </div>
+    </div>
+
+    <div class="arrow" style="--from-color:#f59e0b; --to-color:#ec4899;">
+      <div class="arrow-line"></div><div class="arrow-head"></div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step s5">
+      <div class="step-num">5</div>
+      <div class="step-head">
+        <span class="step-icon">🧠</span>
+        <span class="step-title">Opening Classifier</span>
+        <span class="step-tag">AI Logic</span>
+      </div>
+      <p class="step-desc">A <strong>rule-based classifier</strong> inspects the first 12 minutes of each player's actions to label their opening strategy. Feudal timing, first military unit type, and transition patterns are the primary signals.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">first 12 min</span><span class="metric-lbl">analysis window</span></div>
+        <div class="metric"><span class="metric-val">8 openings</span><span class="metric-lbl">Drush FC · Scout Rush · M@A…</span></div>
+        <div class="metric"><span class="metric-val">feudal time</span><span class="metric-lbl">key signal</span></div>
+      </div>
+    </div>
+
+    <div class="arrow" style="--from-color:#ec4899; --to-color:#22c55e;">
+      <div class="arrow-line"></div><div class="arrow-head"></div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step s6">
+      <div class="step-num">6</div>
+      <div class="step-head">
+        <span class="step-icon">💾</span>
+        <span class="step-title">Raw Storage (JSONL)</span>
+        <span class="step-tag">Storage</span>
+      </div>
+      <p class="step-desc">Parsed results are appended to <strong>date-partitioned JSONL files</strong> in <code style="background:rgba(255,255,255,0.07);padding:2px 6px;border-radius:4px;font-size:12px;">data/raw-replays/YYYY-MM-DD.jsonl</code>. Every record is flushed every 50 replays as a checkpoint. Files older than 30 days are pruned automatically.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">JSONL</span><span class="metric-lbl">append-only</span></div>
+        <div class="metric"><span class="metric-val">checkpoint/50</span><span class="metric-lbl">crash-safe flushes</span></div>
+        <div class="metric"><span class="metric-val">30-day TTL</span><span class="metric-lbl">auto-pruned</span></div>
+      </div>
+    </div>
+
+    <div class="arrow" style="--from-color:#22c55e; --to-color:#f97316;">
+      <div class="arrow-line"></div><div class="arrow-head"></div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step s7">
+      <div class="step-num">7</div>
+      <div class="step-head">
+        <span class="step-icon">🦆</span>
+        <span class="step-title">Aggregation (DuckDB)</span>
+        <span class="step-tag">SQL</span>
+      </div>
+      <p class="step-desc"><strong>DuckDB</strong> scans all JSONL files in seconds and runs a single SQL query to group by <em>mode → map → ELO bracket → civ → opening</em>, counting wins and games. The 30-day filter is applied at query time.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">DuckDB</span><span class="metric-lbl">in-process SQL engine</span></div>
+        <div class="metric"><span class="metric-val">&lt; 5s</span><span class="metric-lbl">full rebuild time</span></div>
+        <div class="metric"><span class="metric-val">5 ELO buckets</span><span class="metric-lbl">all · 1000-1400 · 1800+ …</span></div>
+      </div>
+    </div>
+
+    <div class="arrow" style="--from-color:#f97316; --to-color:#fbbf24;">
+      <div class="arrow-line"></div><div class="arrow-head"></div>
+    </div>
+
+    <!-- Step 8 -->
+    <div class="step s8">
+      <div class="step-num">8</div>
+      <div class="step-head">
+        <span class="step-icon">📤</span>
+        <span class="step-title">JSON Export</span>
+        <span class="step-tag">Output</span>
+      </div>
+      <p class="step-desc">DuckDB results are serialised into <code style="background:rgba(255,255,255,0.07);padding:2px 6px;border-radius:4px;font-size:12px;">strategy-stats.json</code> — a nested structure keyed by <strong>mode → map → ELO → civ → opening</strong>. The Next.js server reads this file at request time with zero latency.</p>
+      <div class="metrics">
+        <div class="metric"><span class="metric-val">strategy-stats.json</span><span class="metric-lbl">nested 5-level dict</span></div>
+        <div class="metric"><span class="metric-val">~2 MB</span><span class="metric-lbl">full export</span></div>
+        <div class="metric"><span class="metric-val">0ms latency</span><span class="metric-lbl">file read, no API call</span></div>
+      </div>
+    </div>
+
+  </div><!-- /funnel -->
+
+  <!-- Output showcase -->
+  <div class="output-box">
+    <div class="output-title">🎯 What Gets Displayed on AoE2Meta</div>
+    <div class="output-sub">Aggregated insights derived from thousands of high-ELO replays</div>
+    <div class="output-features">
+      <div class="feat"><div class="feat-dot" style="background:#f97316;"></div>Opening win rates per civ + map</div>
+      <div class="feat"><div class="feat-dot" style="background:#3b82f6;"></div>Best &amp; worst civs per map</div>
+      <div class="feat"><div class="feat-dot" style="background:#22c55e;"></div>Global opening breakdown</div>
+      <div class="feat"><div class="feat-dot" style="background:#a855f7;"></div>ELO-filtered statistics</div>
+      <div class="feat"><div class="feat-dot" style="background:#fbbf24;"></div>Highest / lowest win-rate openings</div>
+      <div class="feat"><div class="feat-dot" style="background:#ec4899;"></div>Per-civ top 3 openings</div>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-num">2,500</div>
+      <div class="stat-lbl">Players Tracked</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">~500</div>
+      <div class="stat-lbl">Replays / Day</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">30d</div>
+      <div class="stat-lbl">Rolling Window</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">17</div>
+      <div class="stat-lbl">Maps Covered</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">&lt; 5s</div>
+      <div class="stat-lbl">DB Rebuild Time</div>
+    </div>
+  </div>
+
+  <div class="footer">aoe2meta.com · Data pipeline updated daily · 2025</div>
+
+</body>
+</html>

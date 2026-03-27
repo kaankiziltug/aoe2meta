@@ -258,6 +258,8 @@ export default async function StrategyPage({
                   <span className="font-semibold text-foreground">
                     {stratData.totalGames.toLocaleString()}
                   </span>
+                  {" "}
+                  <span className="text-muted-foreground/60">from last 30 days</span>
                 </span>
                 <span>·</span>
                 <span>Updated: {stratData.updatedAt}</span>

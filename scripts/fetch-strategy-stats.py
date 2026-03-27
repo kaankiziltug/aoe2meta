@@ -30,7 +30,7 @@ Raw JSONL record per player per match (full game):
   }
 """
 
-import io, json, logging, time, zipfile, urllib.request, urllib.error
+import fcntl, io, json, logging, time, zipfile, urllib.request, urllib.error
 from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -50,10 +50,10 @@ COMPANION_API = "https://data.aoe2companion.com/api"
 REPLAY_API    = "https://aoe.ms/replay"
 
 # ── Pipeline config ───────────────────────────────────────────────────────────
-SAMPLE_PAGES       = list(range(1, 51))   # 50 pages × 50 = 2500 players (1800+)
+PAGES_PER_SHARD    = 50         # 50 pages × 50 players = 2500 players per shard
 MATCHES_PER_PLAYER = 30
-REPLAYS_PER_RUN    = 500
-BATCH_DELAY_S      = 0.5
+REPLAYS_PER_RUN    = 600        # per shard per iteration
+BATCH_DELAY_S      = 0.0        # rate control now handled by global _acquire_replay_slot()
 LAST_N_DAYS        = 30
 CONTINUOUS         = True
 LOOP_DELAY_S       = 5
@@ -313,7 +313,11 @@ def http_get(url: str, timeout: int = 15, retries: int = 3) -> bytes | None:
                 return r.read()
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                time.sleep(10 * (2 ** attempt))
+                # Rate limited — fail fast, rely on _acquire_replay_slot() to prevent this.
+                # A short wait lets the token bucket recover without wasting minutes.
+                log.debug("429 rate-limit on %s", url)
+                time.sleep(15)
+                return None          # don't retry — move to next candidate
             elif e.code in (404, 410):
                 return None
             else:
@@ -371,7 +375,31 @@ def fetch_player_matches(profile_id: int, days: int = LAST_N_DAYS) -> list[dict]
     except Exception:
         return []
 
+# ── Global aoe.ms rate limiter (shared across all worker processes) ────────────
+# Safe rate: 1 request every MIN_REPLAY_INTERVAL seconds across ALL workers.
+# Uses an exclusive-lock + timestamp file so workers coordinate automatically.
+MIN_REPLAY_INTERVAL = 5.0   # seconds between requests to aoe.ms (all workers combined)
+_RATE_LOCK_FILE = RAW_DIR / ".aoe_rate_lock"
+
+def _acquire_replay_slot() -> None:
+    """Block until we're allowed to make the next aoe.ms request."""
+    _RATE_LOCK_FILE.touch(exist_ok=True)
+    while True:
+        with open(_RATE_LOCK_FILE, "r+") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            content = f.read().strip()
+            last_ts = float(content) if content else 0.0
+            now = time.time()
+            wait = MIN_REPLAY_INTERVAL - (now - last_ts)
+            if wait <= 0:
+                f.seek(0); f.write(str(now)); f.truncate()
+                fcntl.flock(f, fcntl.LOCK_UN)
+                return
+            fcntl.flock(f, fcntl.LOCK_UN)
+        time.sleep(max(wait, 0.05))
+
 def download_replay(match_id: int, profile_id: int) -> bytes | None:
+    _acquire_replay_slot()
     raw = http_get(f"{REPLAY_API}/?gameId={match_id}&profileId={profile_id}", timeout=30, retries=4)
     if not raw:
         return None
@@ -395,17 +423,36 @@ def append_raw_records(records: list[dict]) -> None:
             for r in recs:
                 f.write(json.dumps(r, separators=(",", ":")) + "\n")
 
-# ── Processed IDs ─────────────────────────────────────────────────────────────
+# ── Processed IDs (file-lock safe for parallel workers) ───────────────────────
 PROCESSED_IDS_FILE = RAW_DIR / "processed_ids.json"
 
 def load_processed_ids() -> set[int]:
+    """Shared-lock read — safe to call from multiple workers simultaneously."""
+    PROCESSED_IDS_FILE.touch(exist_ok=True)
     try:
-        return set(json.loads(PROCESSED_IDS_FILE.read_text()))
+        with open(PROCESSED_IDS_FILE, "r") as f:
+            fcntl.flock(f, fcntl.LOCK_SH)
+            content = f.read()
+            fcntl.flock(f, fcntl.LOCK_UN)
+        return set(json.loads(content)) if content.strip() else set()
     except Exception:
         return set()
 
-def save_processed_ids(ids: set[int]) -> None:
-    PROCESSED_IDS_FILE.write_text(json.dumps(list(ids)))
+def save_processed_ids(new_ids: set[int]) -> None:
+    """Exclusive-lock read-merge-write — multiple workers can call concurrently."""
+    PROCESSED_IDS_FILE.touch(exist_ok=True)
+    with open(PROCESSED_IDS_FILE, "r+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            content = f.read()
+            existing = set(json.loads(content)) if content.strip() else set()
+        except Exception:
+            existing = set()
+        merged = existing | new_ids
+        f.seek(0)
+        f.write(json.dumps(list(merged)))
+        f.truncate()
+        fcntl.flock(f, fcntl.LOCK_UN)
 
 # ── DuckDB stats rebuild ──────────────────────────────────────────────────────
 def rebuild_stats_from_raw() -> dict:
@@ -484,11 +531,11 @@ def save_stats(stats: dict) -> None:
     log.info("Saved stats → %s  (records=%s)", OUT_FILE, stats.get("totalRecords", "?"))
 
 # ── Main pipeline loop ────────────────────────────────────────────────────────
-def run_once(processed_ids: set[int]) -> tuple[int, int]:
+def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
     # 1. Leaderboard
-    log.info("Fetching %d leaderboard pages…", len(SAMPLE_PAGES))
+    log.info("Fetching %d leaderboard pages (p%d–p%d)…", len(pages), pages[0], pages[-1])
     profile_elo: dict[int, int] = {}
-    for page in SAMPLE_PAGES:
+    for page in pages:
         for item in fetch_leaderboard_players(page):
             pid = item.get("rlUserId")
             elo = item.get("elo") or 0
@@ -520,6 +567,7 @@ def run_once(processed_ids: set[int]) -> tuple[int, int]:
     # 3. Download + parse
     done = 0; new_rec = 0; dl_fail = 0; parse_fail = 0
     raw_batch: list[dict] = []
+    new_processed: set[int] = set()   # IDs processed in this run (for incremental save)
 
     for match in candidates:
         if done >= REPLAYS_PER_RUN:
@@ -602,6 +650,7 @@ def run_once(processed_ids: set[int]) -> tuple[int, int]:
             new_rec += 1
 
         processed_ids.add(mid)
+        new_processed.add(mid)
         done += 1
 
         if done % 50 == 0:
@@ -610,14 +659,16 @@ def run_once(processed_ids: set[int]) -> tuple[int, int]:
             # Flush every 50 replays — don't lose progress if process is killed
             if raw_batch:
                 append_raw_records(raw_batch)
-                save_processed_ids(processed_ids)
+                save_processed_ids(new_processed)   # incremental merge (multi-worker safe)
                 raw_batch = []
+                new_processed = set()
                 log.info("  → flushed to JSONL (checkpoint)")
 
         time.sleep(BATCH_DELAY_S)
 
     if raw_batch:
         append_raw_records(raw_batch)
+        save_processed_ids(new_processed)
         log.info("Appended %d records to JSONL", len(raw_batch))
 
     log.info("Run done — replays: %d | records: +%d | dl_fail: %d | parse_fail: %d",
@@ -629,32 +680,47 @@ def main() -> None:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--continuous", action="store_true", default=CONTINUOUS)
+    ap.add_argument("--shard",           type=int, default=0,
+                    help="Worker index (0-based)")
+    ap.add_argument("--num-shards",      type=int, default=1,
+                    help="Total number of parallel workers")
+    ap.add_argument("--pages-per-shard", type=int, default=PAGES_PER_SHARD,
+                    help="Leaderboard pages per shard (50 pages = 2500 players)")
     args = ap.parse_args()
 
-    log.info("=== AoE2Meta strategy pipeline ===")
-    log.info("LAST_N_DAYS=%d  REPLAYS_PER_RUN=%d  CONTINUOUS=%s",
-             LAST_N_DAYS, REPLAYS_PER_RUN, args.continuous)
+    # Compute this shard's leaderboard page range
+    start_page = args.shard * args.pages_per_shard + 1
+    end_page   = start_page + args.pages_per_shard
+    pages      = list(range(start_page, end_page))
+    is_primary = (args.shard == 0)   # only primary shard rebuilds stats JSON
 
-    processed_ids = load_processed_ids()
-    log.info("Already processed: %d matches", len(processed_ids))
+    log.info("=== AoE2Meta strategy pipeline  shard=%d/%d  pages=%d–%d ===",
+             args.shard, args.num_shards, pages[0], pages[-1])
+    log.info("LAST_N_DAYS=%d  REPLAYS_PER_RUN=%d  BATCH_DELAY=%.2fs  CONTINUOUS=%s",
+             LAST_N_DAYS, REPLAYS_PER_RUN, BATCH_DELAY_S, args.continuous)
 
     total_replays = total_records = iteration = 0
 
     try:
         while True:
             iteration += 1
-            log.info("─── Iteration %d  (cumulative: %d replays, %d records) ───",
-                     iteration, total_replays, total_records)
+            # Reload processed IDs each iteration (other shards may have added IDs)
+            processed_ids = load_processed_ids()
+            log.info("─── Shard %d  Iter %d  (already processed: %d, cumulative: %d replays) ───",
+                     args.shard, iteration, len(processed_ids), total_replays)
 
-            r, rec = run_once(processed_ids)
+            r, rec = run_once(processed_ids, pages)
             total_replays += r; total_records += rec
 
-            stats = rebuild_stats_from_raw()
-            save_stats(stats)
-            save_processed_ids(processed_ids)
-
-            log.info("✅ Iter %d done — window records: %d | cumulative replays: %d",
-                     iteration, stats.get("totalRecords", 0), total_replays)
+            # Only primary shard rebuilds the public stats JSON to avoid conflicts
+            if is_primary:
+                stats = rebuild_stats_from_raw()
+                save_stats(stats)
+                log.info("✅ [primary] Iter %d done — window records: %d | cumulative replays: %d",
+                         iteration, stats.get("totalRecords", 0), total_replays)
+            else:
+                log.info("✅ [shard %d] Iter %d done — cumulative replays: %d",
+                         args.shard, iteration, total_replays)
 
             if not args.continuous:
                 break
@@ -662,10 +728,10 @@ def main() -> None:
             time.sleep(LOOP_DELAY_S)
 
     except KeyboardInterrupt:
-        log.info("Interrupted — saving state…")
-        stats = rebuild_stats_from_raw()
-        save_stats(stats)
-        save_processed_ids(processed_ids)
+        log.info("Shard %d interrupted — saving state…", args.shard)
+        if is_primary:
+            stats = rebuild_stats_from_raw()
+            save_stats(stats)
         log.info("Saved. Bye.")
 
 
