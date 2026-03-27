@@ -108,7 +108,7 @@ export default function HomePage() {
             </Button>
 
             {/* Tier List */}
-            <div className="mt-10 w-full max-w-3xl mx-auto">
+            <div className="mt-10 w-full max-w-7xl mx-auto">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <TrendingUp className="h-4 w-4 text-primary" />
@@ -151,7 +151,7 @@ export default function HomePage() {
                     return (
                       <div key={label} className={`flex items-center gap-2 rounded-xl border p-2 ${bg}`}>
                         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xl font-black ${color}`}>{label}</span>
-                        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
+                        <div className="flex gap-1.5 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                           {civs.map((civ) => (
                             <Link key={civ.civName} href={`/civ/${civ.civName.toLowerCase().replace(/\s+/g, "_")}`}>
                               <div className="group flex shrink-0 flex-col items-center gap-1 rounded-lg border border-border/30 bg-background/40 p-1.5 text-center transition-all hover:border-primary/40 hover:scale-105 cursor-pointer w-14">
@@ -173,7 +173,7 @@ export default function HomePage() {
 
             {/* Opening Breakdown */}
             {strategyData && strategyData.globalOpenings.length > 0 && (
-              <div className="mt-8 w-full max-w-3xl mx-auto">
+              <div className="mt-8 w-full max-w-7xl mx-auto">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Shield className="h-4 w-4 text-primary" />
