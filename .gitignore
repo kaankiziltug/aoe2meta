@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Raw replay data (large, local only)
+data/raw-replays/
+scripts/__pycache__/
