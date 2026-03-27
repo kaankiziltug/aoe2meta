@@ -135,8 +135,15 @@ export function formatWinRate(wins: number, total: number): string {
   return `${((wins / total) * 100).toFixed(1)}%`;
 }
 
+// Normalize civ name variants (aocref uses "Maya"/"Inca", CDN uses "mayans"/"incas")
+const CIV_SLUG_OVERRIDES: Record<string, string> = {
+  maya:  "mayans",
+  inca:  "incas",
+};
+
 /** Returns the AoE2Companion CDN URL for a civilization icon */
 export function getCivImageUrl(civName: string): string {
-  const slug = civName.toLowerCase().replace(/\s+/g, "_");
+  const raw  = civName.toLowerCase().replace(/\s+/g, "_");
+  const slug = CIV_SLUG_OVERRIDES[raw] ?? raw;
   return `https://backend.cdn.aoe2companion.com/public/aoe2/de/civilizations/${slug}.png`;
 }

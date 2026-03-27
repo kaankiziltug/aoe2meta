@@ -1611,7 +1611,8 @@ export class MicrosoftApiProvider implements AoE2DataProvider {
 
       civs.sort((a, b) => b.totalGames - a.totalGames);
 
-      const totalGames = civs.reduce((s, c) => s + c.totalGames, 0) / 2; // 2 players per match
+      // Use globalMap (all civs, before per-civ MIN_GAMES filter) for the match count
+      const totalGames = [...globalMap.values()].reduce((s, v) => s + v.games, 0) / 2;
 
       const globalOpenings: OpeningStat[] = [...globalMap.entries()]
         .map(([opening, { wins, games }]) => ({

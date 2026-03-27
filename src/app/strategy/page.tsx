@@ -1,6 +1,6 @@
 import { Metadata } from "next";
-import Image from "next/image";
 import { Clock, Swords, TrendingUp, TrendingDown } from "lucide-react";
+import { CivImage } from "@/components/ui/civ-image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createDataProvider } from "@/lib/api/provider";
 import { getCivImageUrl } from "@/lib/constants";
@@ -110,13 +110,11 @@ function CivCard({ civ }: { civ: CivOpeningStats }) {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Image
+            <CivImage
               src={getCivImageUrl(civ.civName)}
               alt={civ.civName}
               width={28}
               height={28}
-              unoptimized
-              className="rounded-sm object-cover"
             />
             <span className="text-sm font-semibold text-foreground">{civ.civName}</span>
           </div>

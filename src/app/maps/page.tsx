@@ -1,6 +1,6 @@
 import { Metadata } from "next";
-import Image from "next/image";
 import { Map, Trophy, AlertTriangle, Clock } from "lucide-react";
+import { CivImage } from "@/components/ui/civ-image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createDataProvider } from "@/lib/api/provider";
 import { getCivImageUrl } from "@/lib/constants";
@@ -30,13 +30,11 @@ function CivRow({ civ }: { civ: MapCivStat }) {
   const isGood = civ.winRate >= 50;
   return (
     <div className="flex items-center gap-2 py-1">
-      <Image
+      <CivImage
         src={getCivImageUrl(civ.civName)}
         alt={civ.civName}
         width={24}
         height={24}
-        unoptimized
-        className="rounded-sm object-cover"
       />
       <span className="flex-1 truncate text-sm text-foreground">
         {civ.civName}
