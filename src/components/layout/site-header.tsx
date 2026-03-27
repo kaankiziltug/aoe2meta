@@ -3,20 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Search, Menu, X, Swords, Trophy, BarChart3, Home, Layers, Map, TrendingUp, BarChart2, Shield } from "lucide-react";
+import { Search, Menu, X, Swords, Trophy, BarChart3, Layers, Map, TrendingUp, BarChart2, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchCommand } from "@/components/layout/search-command";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Home", icon: Home },
+  { href: "/strategy", label: "Strategy", icon: Shield },
   { href: "/leaderboard/rm-1v1", label: "Leaderboards", icon: Trophy },
   { href: "/stats", label: "Statistics", icon: BarChart3 },
   { href: "/tier-list", label: "Tier List", icon: Layers },
   { href: "/maps", label: "Maps", icon: Map },
   { href: "/meta", label: "Meta", icon: TrendingUp },
   { href: "/compare",  label: "Compare",  icon: BarChart2 },
-  { href: "/strategy", label: "Strategy", icon: Shield },
 ];
 
 export function SiteHeader() {

@@ -8,7 +8,7 @@ import { GameMode, OpeningStat, CivOpeningStats } from "@/lib/api/types";
 import { ModeSelector } from "./mode-selector";
 
 // ── Coming soon guard ─────────────────────────────────────────────────────────
-const COMING_SOON = true; // flip to false once strategy-stats.json has sufficient data
+const COMING_SOON = false; // flip to false once strategy-stats.json has sufficient data
 
 export const metadata: Metadata = {
   title: "Opening Strategies",
@@ -38,11 +38,11 @@ function openingColor(name: string) {
 }
 
 const ELO_OPTIONS = [
-  { key: "all",       label: "All ELOs"  },
-  { key: "<1000",     label: "< 1000"    },
-  { key: "1000-1400", label: "1000–1400" },
-  { key: "1400-1800", label: "1400–1800" },
-  { key: "1800+",     label: "1800+"     },
+  { key: "all",       label: "All ELOs",  active: true  },
+  { key: "<1000",     label: "< 1000",    active: false },
+  { key: "1000-1400", label: "1000–1400", active: false },
+  { key: "1400-1800", label: "1400–1800", active: false },
+  { key: "1800+",     label: "1800+",     active: true  },
 ] as const;
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -215,19 +215,30 @@ export default async function StrategyPage({
             />
             {/* ELO pills */}
             <div className="flex flex-wrap gap-1.5">
-              {ELO_OPTIONS.map((opt) => (
-                <a
-                  key={opt.key}
-                  href={`/strategy?mode=${mode}&map=${mapSlug}&elo=${opt.key}`}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                    eloKey === opt.key
-                      ? "bg-orange-500 text-white"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
-                >
-                  {opt.label}
-                </a>
-              ))}
+              {ELO_OPTIONS.map((opt) =>
+                opt.active ? (
+                  <a
+                    key={opt.key}
+                    href={`/strategy?mode=${mode}&map=${mapSlug}&elo=${opt.key}`}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      eloKey === opt.key
+                        ? "bg-orange-500 text-white"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                  >
+                    {opt.label}
+                  </a>
+                ) : (
+                  <div key={opt.key} className="group relative">
+                    <span className="block rounded-md px-3 py-1.5 text-xs font-medium cursor-not-allowed opacity-35 bg-muted text-muted-foreground select-none">
+                      {opt.label}
+                    </span>
+                    <div className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-popover border border-border px-2.5 py-1 text-[11px] text-muted-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100 z-50">
+                      Coming soon — not enough data yet
+                    </div>
+                  </div>
+                )
+              )}
             </div>
           </div>
 

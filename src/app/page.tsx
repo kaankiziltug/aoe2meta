@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Search, Trophy, BarChart3, Users, Swords, ArrowRight, Crown, TrendingUp } from "lucide-react";
+import { Search, Trophy, BarChart3, Users, Swords, ArrowRight, Crown, TrendingUp, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SearchCommand } from "@/components/layout/search-command";
 import { StreakIndicator } from "@/components/shared/streak-indicator";
 import { WinLossBadge } from "@/components/shared/win-loss-badge";
-import { LeaderboardResponse, GameMode, CivStats } from "@/lib/api/types";
+import { LeaderboardResponse, GameMode, CivStats, StrategyMapStats } from "@/lib/api/types";
 import { getCountryFlag, formatTimeAgo, GAME_MODES, getCivImageUrl } from "@/lib/constants";
 
 export default function HomePage() {
@@ -30,6 +30,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [topCivs, setTopCivs] = useState<CivStats[]>([]);
   const [loadingCivs, setLoadingCivs] = useState(true);
+  const [strategyData, setStrategyData] = useState<StrategyMapStats | null>(null);
 
   useEffect(() => {
     fetch("/api/stats?mode=rm-1v1")
@@ -39,6 +40,13 @@ export default function HomePage() {
         setLoadingCivs(false);
       })
       .catch(() => setLoadingCivs(false));
+
+    fetch("/api/strategy?mode=rm-1v1&map=arabia&elo=all")
+      .then((r) => r.json())
+      .then((data: StrategyMapStats) => {
+        if (data && data.civs) setStrategyData(data);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -162,6 +170,73 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+
+            {/* Opening Breakdown */}
+            {strategyData && strategyData.civs.length > 0 && (
+              <div className="mt-8 w-full max-w-3xl mx-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Shield className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-foreground">Opening Strategies</span>
+                    <span>· Arabia · 1800+ ELO</span>
+                  </div>
+                  <Link href="/strategy" className="text-xs text-primary hover:underline flex items-center gap-1">
+                    Full breakdown <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
+                <p className="text-[11px] text-muted-foreground/60 mb-3">
+                  Most popular openings per civilization · parsed from ranked replays
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {strategyData.civs.slice(0, 6).map((civ) => {
+                    const top = civ.openings[0];
+                    if (!top) return null;
+                    const OPENING_COLORS: Record<string, string> = {
+                      "Archer Rush": "bg-yellow-500", "Scout Rush": "bg-orange-500",
+                      "Drush FC": "bg-purple-500", "Fast Castle": "bg-blue-500",
+                      "M@A Archers": "bg-red-500", "M@A Rush": "bg-rose-500",
+                      "Drush Archers": "bg-fuchsia-500", "Drush M@A": "bg-pink-500",
+                      "Pike Skirm": "bg-green-500", "Other": "bg-muted-foreground/40",
+                    };
+                    const color = OPENING_COLORS[top.opening] ?? "bg-muted-foreground/40";
+                    return (
+                      <Link key={civ.civName} href={`/strategy?map=arabia&elo=all`}>
+                        <div className="group flex items-center gap-2.5 rounded-xl border border-border/40 bg-card/60 px-3 py-2.5 transition-all hover:border-primary/30 hover:bg-card cursor-pointer">
+                          <Image
+                            src={getCivImageUrl(civ.civName)}
+                            alt={civ.civName}
+                            width={28}
+                            height={28}
+                            unoptimized
+                            className="rounded-sm object-cover shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-semibold text-foreground truncate">{civ.civName}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${color}`} />
+                              <p className="text-[10px] text-muted-foreground truncate">{top.opening}</p>
+                            </div>
+                          </div>
+                          <span className={`text-[11px] font-bold tabular-nums shrink-0 ${top.winRate >= 50 ? "text-green-400" : "text-red-400"}`}>
+                            {top.winRate.toFixed(1)}%
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 text-center">
+                  <Link
+                    href="/strategy"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    View all civilizations &amp; strategies
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>

@@ -8,7 +8,7 @@ import { GameMode, MapCivStat, MapStats } from "@/lib/api/types";
 import { ModeSelector } from "./mode-selector";
 
 // ── Coming soon overlay ───────────────────────────────────────────────────────
-const COMING_SOON = true; // flip to false when data is sufficient
+const COMING_SOON = false; // flip to false when data is sufficient
 
 export const metadata: Metadata = {
   title: "Map Statistics",
