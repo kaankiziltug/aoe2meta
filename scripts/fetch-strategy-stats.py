@@ -623,6 +623,36 @@ def save_stats(stats: dict) -> None:
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUT_FILE.write_text(json.dumps(stats, separators=(",", ":")))
     log.info("Saved stats → %s  (records=%s)", OUT_FILE, stats.get("totalRecords", "?"))
+    _git_push_stats(stats)
+
+def _git_push_stats(stats: dict) -> None:
+    """Commit and push strategy-stats.json to the current branch (develop → staging)."""
+    import subprocess
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=REPO_ROOT, text=True
+        ).strip()
+        date_str = stats.get("updated", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+        subprocess.run(["git", "pull", "--rebase", "origin", branch],
+                       cwd=REPO_ROOT, capture_output=True)
+        subprocess.run(["git", "add", str(OUT_FILE)],
+                       cwd=REPO_ROOT, check=True, capture_output=True)
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"], cwd=REPO_ROOT
+        )
+        if result.returncode == 0:
+            log.info("Git: no changes to push")
+            return
+        subprocess.run(
+            ["git", "commit", "-m", f"chore: strategy stats {date_str} [skip ci]"],
+            cwd=REPO_ROOT, check=True, capture_output=True
+        )
+        subprocess.run(["git", "push", "origin", branch],
+                       cwd=REPO_ROOT, check=True, capture_output=True)
+        log.info("Git: pushed strategy-stats.json → %s", branch)
+    except Exception as e:
+        log.warning("Git push failed (non-fatal): %s", e)
 
 # ── Main pipeline loop ────────────────────────────────────────────────────────
 def seconds_until_next_midnight_utc() -> float:
