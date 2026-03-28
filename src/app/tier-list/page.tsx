@@ -177,28 +177,18 @@ function TierRow({ tier, civs }: { tier: Tier; civs: CivStats[] }) {
   );
 }
 
-const ELO_RANGE_MAP: Record<string, [number, number] | undefined> = {
-  "all":       undefined,
-  "1000-1400": [1000, 1400],
-  "1400-1800": [1400, 1800],
-  "1800+":     [1800, 9999],
-  "2000+":     [2000, 9999],
-};
-
 interface PageProps {
-  searchParams: Promise<{ mode?: string; elo?: string }>;
+  searchParams: Promise<{ mode?: string }>;
 }
 
 export const dynamic = "force-dynamic";
 
 export default async function TierListPage({ searchParams }: PageProps) {
-  const { mode: rawMode, elo: rawElo } = await searchParams;
+  const { mode: rawMode } = await searchParams;
   const mode = (rawMode || "rm-1v1") as GameMode;
-  const eloKey = rawElo && rawElo in ELO_RANGE_MAP ? rawElo : "all";
-  const eloRange = ELO_RANGE_MAP[eloKey];
 
   const provider = createDataProvider();
-  const stats = await provider.getCivStats(mode, eloRange);
+  const stats = await provider.getCivStats(mode);
   const groups = groupByTier(stats);
 
   const totalGames = stats.reduce((sum, s) => sum + s.totalGames, 0);
@@ -229,7 +219,7 @@ export default async function TierListPage({ searchParams }: PageProps) {
             <div className="h-8 w-64 animate-pulse rounded-md bg-muted" />
           }
         >
-          <ModeSelector currentMode={mode} currentElo={eloKey} />
+          <ModeSelector currentMode={mode} />
         </Suspense>
       </div>
 
