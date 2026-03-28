@@ -5,6 +5,13 @@ on:
     - cron: "0 2 * * *"   # 02:00 UTC every day
     - cron: "0 14 * * *"  # 14:00 UTC every day (second run for more coverage)
   workflow_dispatch:        # Allow manual trigger from GitHub UI
+    inputs:
+      branch:
+        description: "Branch to run on (main or develop)"
+        default: "main"
+  push:
+    branches: [develop]
+    paths: ["src/data/strategy-stats.json"]
 
 jobs:
   fetch-stats:

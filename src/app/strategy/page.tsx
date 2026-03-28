@@ -39,7 +39,7 @@ function openingColor(name: string) {
 
 const ELO_OPTIONS = [
   { key: "all",       label: "All ELOs",  active: true  },
-  { key: "<1000",     label: "< 1000",    active: false },
+  { key: "0-1000",    label: "0–1000",    active: false },
   { key: "1000-1400", label: "1000–1400", active: false },
   { key: "1400-1800", label: "1400–1800", active: false },
   { key: "1800+",     label: "1800+",     active: true  },

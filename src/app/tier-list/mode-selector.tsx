@@ -8,6 +8,7 @@ const TIER_LIST_MODES = GAME_MODES.slice(0, 4); // RM 1v1, RM Team, EW 1v1, EW T
 
 const ELO_OPTIONS = [
   { key: "all",       label: "All ELOs" },
+  { key: "0-1000",    label: "0–1000" },
   { key: "1000-1400", label: "1000–1400" },
   { key: "1400-1800", label: "1400–1800" },
   { key: "1800+",     label: "1800+" },

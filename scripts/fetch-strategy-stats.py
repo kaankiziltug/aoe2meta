@@ -54,9 +54,20 @@ PAGES_PER_SHARD    = 50         # 50 pages × 50 players = 2500 players per shar
 MATCHES_PER_PLAYER = 30
 REPLAYS_PER_RUN    = 600        # per shard per iteration
 BATCH_DELAY_S      = 0.0        # rate control now handled by global _acquire_replay_slot()
-LAST_N_DAYS        = 30
+LAST_N_DAYS        = 30         # DuckDB aggregation window (stats JSON covers last 30 days)
+# Candidate window: always "yesterday" (UTC).
+# Rationale: yesterday's replays are fully uploaded; today's matches are still in progress.
+# After 30 days of running we have a complete rolling 30-day dataset.
 CONTINUOUS         = True
 LOOP_DELAY_S       = 5
+# If fewer than this many new candidates are found, the day is considered "exhausted".
+# Workers will sleep until the next UTC midnight + NEXT_DAY_BUFFER_S before retrying.
+MIN_CANDIDATES_THRESHOLD = 50
+NEXT_DAY_BUFFER_S        = 3600   # 1 hour after midnight — gives replays time to upload
+# If success rate drops below this after MIN_ATTEMPTS_BEFORE_YIELD_CHECK attempts,
+# the iteration is cut short and the worker sleeps until next midnight.
+MIN_SUCCESS_RATE         = 0.20   # 20% — below this we're wasting requests
+MIN_ATTEMPTS_BEFORE_YIELD_CHECK = 100   # don't judge too early
 
 # ── AoE2 constants ────────────────────────────────────────────────────────────
 FEUDAL_TECH   = 101
@@ -86,11 +97,15 @@ def civ_name(civ_id: int) -> str:
 # ── ELO bucketing ─────────────────────────────────────────────────────────────
 ELO_BUCKETS = [
     ("all",       0,    9999),
+    ("0-1000",    0,     999),
     ("1000-1400", 1000, 1399),
     ("1400-1800", 1400, 1799),
     ("1800+",     1800, 9999),
     ("2000+",     2000, 9999),
 ]
+
+# Leaderboard pages with known API anomalies (return wrong/empty data)
+SKIP_PAGES = {500, 800}
 
 def elo_labels(rating: int) -> list[str]:
     return [label for label, lo, hi in ELO_BUCKETS if lo <= rating <= hi]
@@ -347,12 +362,23 @@ def fetch_leaderboard_players(page: int) -> list[dict]:
         log.debug("Leaderboard page %d error: %s", page, e)
         return []
 
-def fetch_player_matches(profile_id: int, days: int = LAST_N_DAYS) -> list[dict]:
+def fetch_player_matches(profile_id: int,
+                         date_from: datetime | None = None,
+                         date_to:   datetime | None = None) -> list[dict]:
+    """Return rm_1v1 matches for *profile_id* that started within [date_from, date_to).
+
+    Default window = yesterday (UTC): fully played + most likely already uploaded to aoe.ms.
+    """
     raw = http_get(f"{COMPANION_API}/matches?profile_ids={profile_id}&count={MATCHES_PER_PLAYER}")
     if not raw:
         return []
     try:
-        cutoff  = datetime.now(timezone.utc) - timedelta(days=days)
+        now = datetime.now(timezone.utc)
+        today_utc     = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday_utc = today_utc - timedelta(days=1)
+        win_from = date_from if date_from is not None else yesterday_utc
+        win_to   = date_to   if date_to   is not None else today_utc
+
         filtered = []
         for m in json.loads(raw).get("matches", []):
             if "rm_1v1" not in str(m.get("leaderboard") or m.get("leaderboardId", "")):
@@ -363,7 +389,7 @@ def fetch_player_matches(profile_id: int, days: int = LAST_N_DAYS) -> list[dict]
                 try:
                     s = datetime.fromisoformat(started.replace("Z", "+00:00"))
                     f = datetime.fromisoformat(finished.replace("Z", "+00:00"))
-                    if s < cutoff:
+                    if not (win_from <= s < win_to):
                         continue
                     if (f - s).total_seconds() < 8 * 60:
                         continue
@@ -424,7 +450,14 @@ def append_raw_records(records: list[dict]) -> None:
                 f.write(json.dumps(r, separators=(",", ":")) + "\n")
 
 # ── Processed IDs (file-lock safe for parallel workers) ───────────────────────
-PROCESSED_IDS_FILE = RAW_DIR / "processed_ids.json"
+PROCESSED_IDS_FILE   = RAW_DIR / "processed_ids.json"
+PLAYER_SCORES_FILE   = RAW_DIR / "player_scores.json"
+
+# Player activity score thresholds
+# A player is "cold" (skip their candidates) if they've been tried enough times
+# but rarely have replays available.
+PLAYER_MIN_ATTEMPTS  = 10    # need at least this many attempts before judging
+PLAYER_MIN_HIT_RATE  = 0.05  # skip if hit rate below 5% after MIN_ATTEMPTS tries
 
 def load_processed_ids() -> set[int]:
     """Shared-lock read — safe to call from multiple workers simultaneously."""
@@ -454,6 +487,66 @@ def save_processed_ids(new_ids: set[int]) -> None:
         f.truncate()
         fcntl.flock(f, fcntl.LOCK_UN)
 
+
+# ── Player activity scores ─────────────────────────────────────────────────────
+# Tracks per-player replay hit rate: {profileId: {"a": attempts, "h": hits}}
+# Workers share this file via fcntl — same multi-worker-safe pattern as processed_ids.
+
+def load_player_scores() -> dict[int, dict]:
+    """Returns {profileId: {"a": attempts, "h": hits}}."""
+    PLAYER_SCORES_FILE.touch(exist_ok=True)
+    try:
+        with open(PLAYER_SCORES_FILE, "r") as f:
+            fcntl.flock(f, fcntl.LOCK_SH)
+            content = f.read()
+            fcntl.flock(f, fcntl.LOCK_UN)
+        raw = json.loads(content) if content.strip() else {}
+        return {int(k): v for k, v in raw.items()}
+    except Exception:
+        return {}
+
+
+def update_player_scores(updates: dict[int, dict]) -> None:
+    """Merge {profileId: {"a": delta_a, "h": delta_h}} into the shared scores file."""
+    if not updates:
+        return
+    PLAYER_SCORES_FILE.touch(exist_ok=True)
+    with open(PLAYER_SCORES_FILE, "r+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            content = f.read()
+            existing: dict = json.loads(content) if content.strip() else {}
+        except Exception:
+            existing = {}
+        for pid, delta in updates.items():
+            key = str(pid)
+            if key not in existing:
+                existing[key] = {"a": 0, "h": 0}
+            existing[key]["a"] += delta.get("a", 0)
+            existing[key]["h"] += delta.get("h", 0)
+        f.seek(0)
+        f.write(json.dumps(existing))
+        f.truncate()
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def is_cold_player(pid: int, scores: dict[int, dict]) -> bool:
+    """Return True if this player rarely uploads replays — skip their candidates."""
+    s = scores.get(pid)
+    if s is None:
+        return False  # unknown player → give a chance
+    if s["a"] < PLAYER_MIN_ATTEMPTS:
+        return False  # not enough data yet
+    return (s["h"] / s["a"]) < PLAYER_MIN_HIT_RATE
+
+
+def player_priority(pid: int, scores: dict[int, dict]) -> float:
+    """Higher = try first. Unknown players get 0.5 (neutral)."""
+    s = scores.get(pid)
+    if s is None or s["a"] == 0:
+        return 0.5
+    return s["h"] / s["a"]
+
 # ── DuckDB stats rebuild ──────────────────────────────────────────────────────
 def rebuild_stats_from_raw() -> dict:
     """
@@ -481,6 +574,7 @@ def rebuild_stats_from_raw() -> dict:
                     mode, mapSlug, civName, opening, won, elo,
                     UNNEST(
                         ['all']
+                        || CASE WHEN elo >= 0    AND elo <=  999 THEN ['0-1000']   ELSE [] END
                         || CASE WHEN elo >= 1000 AND elo <= 1399 THEN ['1000-1400'] ELSE [] END
                         || CASE WHEN elo >= 1400 AND elo <= 1799 THEN ['1400-1800'] ELSE [] END
                         || CASE WHEN elo >= 1800               THEN ['1800+']     ELSE [] END
@@ -531,7 +625,15 @@ def save_stats(stats: dict) -> None:
     log.info("Saved stats → %s  (records=%s)", OUT_FILE, stats.get("totalRecords", "?"))
 
 # ── Main pipeline loop ────────────────────────────────────────────────────────
-def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
+def seconds_until_next_midnight_utc() -> float:
+    """Return seconds until next UTC midnight + NEXT_DAY_BUFFER_S."""
+    now = datetime.now(timezone.utc)
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (tomorrow - now).total_seconds() + NEXT_DAY_BUFFER_S
+
+
+def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int, int]:
+    """Returns (replays_attempted, records_written, candidates_found)."""
     # 1. Leaderboard
     log.info("Fetching %d leaderboard pages (p%d–p%d)…", len(pages), pages[0], pages[-1])
     profile_elo: dict[int, int] = {}
@@ -547,11 +649,17 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
         log.info("Players: %d  ELO: %d – %d",
                  len(unique_ids), min(profile_elo.values()), max(profile_elo.values()))
 
-    # 2. Match candidates (last 30 days only)
+    # 2. Match candidates — yesterday (UTC) only
+    now           = datetime.now(timezone.utc)
+    today_utc     = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_utc = today_utc - timedelta(days=1)
+    log.info("Candidate window: %s → %s (UTC)",
+             yesterday_utc.strftime("%Y-%m-%d"), today_utc.strftime("%Y-%m-%d"))
+
     candidates: list[dict] = []
     seen: set[int] = set()
     for i, pid in enumerate(unique_ids):
-        for m in fetch_player_matches(pid):
+        for m in fetch_player_matches(pid, date_from=yesterday_utc, date_to=today_utc):
             mid = m.get("matchId")
             if mid and mid not in seen and mid not in processed_ids:
                 seen.add(mid)
@@ -562,16 +670,50 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
             log.info("  match fetch: %d / %d players | candidates: %d",
                      i + 1, len(unique_ids), len(candidates))
         time.sleep(0.08)
-    log.info("New candidates (last %d days): %d", LAST_N_DAYS, len(candidates))
+    candidates_found = len(candidates)
+    log.info("Yesterday's new candidates: %d", candidates_found)
 
-    # 3. Download + parse
+    if candidates_found == 0:
+        log.info("No new candidates — day exhausted.")
+        return 0, 0, 0, True
+
+    # 3. Apply player activity scores: filter cold players, sort hot players first
+    player_scores = load_player_scores()
+    before = len(candidates)
+    candidates = [c for c in candidates
+                  if not is_cold_player(c.get("_fetched_profile_id", 0), player_scores)]
+    skipped_cold = before - len(candidates)
+    if skipped_cold:
+        log.info("Player score filter: skipped %d cold-player candidates (%d remain)",
+                 skipped_cold, len(candidates))
+    # Sort: highest hit-rate players first
+    candidates.sort(
+        key=lambda c: player_priority(c.get("_fetched_profile_id", 0), player_scores),
+        reverse=True
+    )
+
+    # 4. Download + parse
     done = 0; new_rec = 0; dl_fail = 0; parse_fail = 0
+    score_updates: dict[int, dict] = {}  # {profileId: {"a": n, "h": n}}
     raw_batch: list[dict] = []
     new_processed: set[int] = set()   # IDs processed in this run (for incremental save)
+
+    day_exhausted = False   # set True to signal main loop to sleep until midnight
 
     for match in candidates:
         if done >= REPLAYS_PER_RUN:
             break
+
+        # Early-exit: if success rate is too low after enough attempts, stop wasting requests.
+        if done >= MIN_ATTEMPTS_BEFORE_YIELD_CHECK:
+            success_rate = (done - dl_fail - parse_fail) / done
+            if success_rate < MIN_SUCCESS_RATE:
+                log.info(
+                    "Low yield early-exit: success_rate=%.0f%% < %.0f%% after %d attempts — day likely exhausted.",
+                    success_rate * 100, MIN_SUCCESS_RATE * 100, done
+                )
+                day_exhausted = True
+                break
 
         mid         = match.get("matchId")
         map_name    = match.get("mapName", "unknown") or "unknown"
@@ -599,11 +741,20 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
 
         replay = download_replay(mid, first_pid)
         if not replay:
-            dl_fail += 1; processed_ids.add(mid); done += 1; continue
+            dl_fail += 1; processed_ids.add(mid); done += 1
+            # Record miss for the player whose match history surfaced this match
+            if fetched_pid:
+                su = score_updates.setdefault(fetched_pid, {"a": 0, "h": 0})
+                su["a"] += 1
+            continue
 
         parsed = parse_replay(replay)
         if not parsed:
-            parse_fail += 1; processed_ids.add(mid); done += 1; continue
+            parse_fail += 1; processed_ids.add(mid); done += 1
+            if fetched_pid:
+                su = score_updates.setdefault(fetched_pid, {"a": 0, "h": 0})
+                su["a"] += 1
+            continue
 
         for pd in parsed:
             pid = pd["profile_id"]
@@ -649,6 +800,12 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
             })
             new_rec += 1
 
+        # Record hit for the player whose match history surfaced this match
+        if fetched_pid:
+            su = score_updates.setdefault(fetched_pid, {"a": 0, "h": 0})
+            su["a"] += 1
+            su["h"] += 1
+
         processed_ids.add(mid)
         new_processed.add(mid)
         done += 1
@@ -660,8 +817,10 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
             if raw_batch:
                 append_raw_records(raw_batch)
                 save_processed_ids(new_processed)   # incremental merge (multi-worker safe)
+                update_player_scores(score_updates)  # persist scores incrementally
                 raw_batch = []
                 new_processed = set()
+                score_updates = {}
                 log.info("  → flushed to JSONL (checkpoint)")
 
         time.sleep(BATCH_DELAY_S)
@@ -669,11 +828,12 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int]:
     if raw_batch:
         append_raw_records(raw_batch)
         save_processed_ids(new_processed)
+        update_player_scores(score_updates)
         log.info("Appended %d records to JSONL", len(raw_batch))
 
     log.info("Run done — replays: %d | records: +%d | dl_fail: %d | parse_fail: %d",
              done, new_rec, dl_fail, parse_fail)
-    return done, new_rec
+    return done, new_rec, candidates_found, day_exhausted
 
 
 def main() -> None:
@@ -688,14 +848,15 @@ def main() -> None:
                     help="Leaderboard pages per shard (50 pages = 2500 players)")
     args = ap.parse_args()
 
-    # Compute this shard's leaderboard page range
+    # Compute this shard's leaderboard page range (skip known broken pages)
     start_page = args.shard * args.pages_per_shard + 1
     end_page   = start_page + args.pages_per_shard
-    pages      = list(range(start_page, end_page))
+    pages      = [p for p in range(start_page, end_page) if p not in SKIP_PAGES]
     is_primary = (args.shard == 0)   # only primary shard rebuilds stats JSON
 
-    log.info("=== AoE2Meta strategy pipeline  shard=%d/%d  pages=%d–%d ===",
-             args.shard, args.num_shards, pages[0], pages[-1])
+    log.info("=== AoE2Meta strategy pipeline  shard=%d/%d  pages=%d–%d (skip=%s) ===",
+             args.shard, args.num_shards, pages[0], pages[-1],
+             sorted(SKIP_PAGES & set(range(start_page, end_page))) or "none")
     log.info("LAST_N_DAYS=%d  REPLAYS_PER_RUN=%d  BATCH_DELAY=%.2fs  CONTINUOUS=%s",
              LAST_N_DAYS, REPLAYS_PER_RUN, BATCH_DELAY_S, args.continuous)
 
@@ -709,23 +870,37 @@ def main() -> None:
             log.info("─── Shard %d  Iter %d  (already processed: %d, cumulative: %d replays) ───",
                      args.shard, iteration, len(processed_ids), total_replays)
 
-            r, rec = run_once(processed_ids, pages)
+            r, rec, cands, day_exhausted = run_once(processed_ids, pages)
             total_replays += r; total_records += rec
 
             # Only primary shard rebuilds the public stats JSON to avoid conflicts
-            if is_primary:
+            if is_primary and rec > 0:
                 stats = rebuild_stats_from_raw()
                 save_stats(stats)
                 log.info("✅ [primary] Iter %d done — window records: %d | cumulative replays: %d",
                          iteration, stats.get("totalRecords", 0), total_replays)
-            else:
+            elif not is_primary:
                 log.info("✅ [shard %d] Iter %d done — cumulative replays: %d",
                          args.shard, iteration, total_replays)
 
             if not args.continuous:
                 break
-            log.info("Sleeping %ds…", LOOP_DELAY_S)
-            time.sleep(LOOP_DELAY_S)
+
+            # Sleep until next midnight UTC if:
+            #   (a) too few new candidates found, or
+            #   (b) early-exit triggered due to low success rate
+            if cands < MIN_CANDIDATES_THRESHOLD or day_exhausted:
+                reason = f"candidates={cands}" if cands < MIN_CANDIDATES_THRESHOLD else "low yield"
+                wait_s = seconds_until_next_midnight_utc()
+                wake_at = (datetime.now(timezone.utc) + timedelta(seconds=wait_s)).strftime("%Y-%m-%d %H:%M UTC")
+                log.info(
+                    "💤 Day exhausted (%s). Sleeping %.0fs until %s (+%dh buffer).",
+                    reason, wait_s, wake_at, NEXT_DAY_BUFFER_S // 3600
+                )
+                time.sleep(wait_s)
+            else:
+                log.info("Sleeping %ds…", LOOP_DELAY_S)
+                time.sleep(LOOP_DELAY_S)
 
     except KeyboardInterrupt:
         log.info("Shard %d interrupted — saving state…", args.shard)

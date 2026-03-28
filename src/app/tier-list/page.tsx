@@ -179,6 +179,7 @@ function TierRow({ tier, civs }: { tier: Tier; civs: CivStats[] }) {
 
 const ELO_RANGE_MAP: Record<string, [number, number] | undefined> = {
   "all":       undefined,
+  "0-1000":    [0,    999],
   "1000-1400": [1000, 1400],
   "1400-1800": [1400, 1800],
   "1800+":     [1800, 9999],

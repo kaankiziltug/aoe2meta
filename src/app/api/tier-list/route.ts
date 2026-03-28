@@ -5,6 +5,7 @@ import { GameMode } from "@/lib/api/types";
 export const dynamic = "force-dynamic";
 
 const ELO_RANGE_MAP: Record<string, [number, number] | undefined> = {
+  "0-1000":    [0,    999],
   "1000-1400": [1000, 1400],
   "1400-1800": [1400, 1800],
   "1800+":     [1800, 9999],
