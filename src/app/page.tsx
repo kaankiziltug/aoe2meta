@@ -106,6 +106,7 @@ export default function HomePage() {
                 ⌘K
               </kbd>
             </Button>
+          </div>
 
             {/* Tier List */}
             <div className="mt-10 w-full max-w-7xl mx-auto">
@@ -248,7 +249,6 @@ export default function HomePage() {
                 })()}
               </div>
             )}
-          </div>
         </div>
       </section>
 
