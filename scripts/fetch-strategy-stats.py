@@ -66,8 +66,8 @@ MIN_CANDIDATES_THRESHOLD = 50
 NEXT_DAY_BUFFER_S        = 3600   # 1 hour after midnight — gives replays time to upload
 # If success rate drops below this after MIN_ATTEMPTS_BEFORE_YIELD_CHECK attempts,
 # the iteration is cut short and the worker sleeps until next midnight.
-MIN_SUCCESS_RATE         = 0.20   # 20% — below this we're wasting requests
-MIN_ATTEMPTS_BEFORE_YIELD_CHECK = 100   # don't judge too early
+MIN_SUCCESS_RATE         = 0.03   # 3% — aoe.ms only has ~10% of replays; exit only when truly dry
+MIN_ATTEMPTS_BEFORE_YIELD_CHECK = 200   # give more attempts before judging yield
 
 # ── AoE2 constants ────────────────────────────────────────────────────────────
 FEUDAL_TECH   = 101
