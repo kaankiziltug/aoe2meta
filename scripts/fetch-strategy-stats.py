@@ -328,10 +328,11 @@ def http_get(url: str, timeout: int = 15, retries: int = 3) -> bytes | None:
                 return r.read()
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                # Rate limited — fail fast, rely on _acquire_replay_slot() to prevent this.
-                # A short wait lets the token bucket recover without wasting minutes.
-                log.debug("429 rate-limit on %s", url)
-                time.sleep(15)
+                # Rate limited — penalise the shared rate lock so all workers back off,
+                # then wait before returning so the caller counts this as a slow attempt.
+                log.info("429 rate-limit — backing off 120s (all workers on this machine)")
+                _penalise_rate_lock(penalty_s=120.0)
+                time.sleep(120)
                 return None          # don't retry — move to next candidate
             elif e.code in (404, 410):
                 return None
@@ -404,7 +405,7 @@ def fetch_player_matches(profile_id: int,
 # ── Global aoe.ms rate limiter (shared across all worker processes) ────────────
 # Safe rate: 1 request every MIN_REPLAY_INTERVAL seconds across ALL workers.
 # Uses an exclusive-lock + timestamp file so workers coordinate automatically.
-MIN_REPLAY_INTERVAL = 5.0   # seconds between requests to aoe.ms (all workers combined)
+MIN_REPLAY_INTERVAL = 30.0  # seconds between requests to aoe.ms (all workers on this machine)
 _RATE_LOCK_FILE = RAW_DIR / ".aoe_rate_lock"
 
 def _acquire_replay_slot() -> None:
@@ -423,6 +424,17 @@ def _acquire_replay_slot() -> None:
                 return
             fcntl.flock(f, fcntl.LOCK_UN)
         time.sleep(max(wait, 0.05))
+
+def _penalise_rate_lock(penalty_s: float = 60.0) -> None:
+    """After a 429, push the rate lock timestamp forward so all workers back off."""
+    _RATE_LOCK_FILE.touch(exist_ok=True)
+    with open(_RATE_LOCK_FILE, "r+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        content = f.read().strip()
+        last_ts = float(content) if content else 0.0
+        # Set timestamp to now + penalty so workers wait penalty_s before next request
+        f.seek(0); f.write(str(time.time() + penalty_s)); f.truncate()
+        fcntl.flock(f, fcntl.LOCK_UN)
 
 def download_replay(match_id: int, profile_id: int) -> bytes | None:
     _acquire_replay_slot()
