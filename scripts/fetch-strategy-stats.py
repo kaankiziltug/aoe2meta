@@ -330,9 +330,9 @@ def http_get(url: str, timeout: int = 15, retries: int = 3) -> bytes | None:
             if e.code == 429:
                 # Rate limited — penalise the shared rate lock so all workers back off,
                 # then wait before returning so the caller counts this as a slow attempt.
-                log.info("429 rate-limit — backing off 120s (all workers on this machine)")
-                _penalise_rate_lock(penalty_s=120.0)
-                time.sleep(120)
+                log.info("429 rate-limit — backing off 300s (all workers on this machine)")
+                _penalise_rate_lock(penalty_s=300.0)
+                time.sleep(300)
                 return None          # don't retry — move to next candidate
             elif e.code in (404, 410):
                 return None
@@ -405,7 +405,7 @@ def fetch_player_matches(profile_id: int,
 # ── Global aoe.ms rate limiter (shared across all worker processes) ────────────
 # Safe rate: 1 request every MIN_REPLAY_INTERVAL seconds across ALL workers.
 # Uses an exclusive-lock + timestamp file so workers coordinate automatically.
-MIN_REPLAY_INTERVAL = 30.0  # seconds between requests to aoe.ms (all workers on this machine)
+MIN_REPLAY_INTERVAL = 8.0   # seconds between requests to aoe.ms (all workers on this machine)
 _RATE_LOCK_FILE = RAW_DIR / ".aoe_rate_lock"
 
 def _acquire_replay_slot() -> None:
