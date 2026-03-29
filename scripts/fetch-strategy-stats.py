@@ -679,17 +679,22 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int, int]:
         log.info("Players: %d  ELO: %d – %d",
                  len(unique_ids), min(profile_elo.values()), max(profile_elo.values()))
 
-    # 2. Match candidates — yesterday (UTC) only
-    now           = datetime.now(timezone.utc)
-    today_utc     = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    yesterday_utc = today_utc - timedelta(days=1)
-    log.info("Candidate window: %s → %s (UTC)",
-             yesterday_utc.strftime("%Y-%m-%d"), today_utc.strftime("%Y-%m-%d"))
+    # 2. Match candidates — rolling last 30 days (UTC)
+    # Using full window instead of yesterday-only so that:
+    #   a) replays uploaded late to aoe.ms are eventually captured
+    #   b) workers stay active instead of sleeping 18+ hours/day
+    #   c) gaps from days before the servers were set up get filled in
+    # processed_ids prevents duplicate JSONL records across iterations.
+    now          = datetime.now(timezone.utc)
+    today_utc    = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    window_from  = today_utc - timedelta(days=LAST_N_DAYS)
+    log.info("Candidate window: last %d days (%s → %s UTC)",
+             LAST_N_DAYS, window_from.strftime("%Y-%m-%d"), today_utc.strftime("%Y-%m-%d"))
 
     candidates: list[dict] = []
     seen: set[int] = set()
     for i, pid in enumerate(unique_ids):
-        for m in fetch_player_matches(pid, date_from=yesterday_utc, date_to=today_utc):
+        for m in fetch_player_matches(pid, date_from=window_from, date_to=today_utc):
             mid = m.get("matchId")
             if mid and mid not in seen and mid not in processed_ids:
                 seen.add(mid)
@@ -701,7 +706,7 @@ def run_once(processed_ids: set[int], pages: list[int]) -> tuple[int, int, int]:
                      i + 1, len(unique_ids), len(candidates))
         time.sleep(0.08)
     candidates_found = len(candidates)
-    log.info("Yesterday's new candidates: %d", candidates_found)
+    log.info("New candidates (last %d days): %d", LAST_N_DAYS, candidates_found)
 
     if candidates_found == 0:
         log.info("No new candidates — day exhausted.")
@@ -916,17 +921,14 @@ def main() -> None:
             if not args.continuous:
                 break
 
-            # Sleep until next midnight UTC if:
-            #   (a) too few new candidates found, or
-            #   (b) early-exit triggered due to low success rate
+            # With rolling 30-day window, "pool exhausted" means we've tried everything
+            # currently available. New matches arrive daily, so sleep 2h and retry —
+            # much shorter than waiting until next midnight.
             if cands < MIN_CANDIDATES_THRESHOLD or day_exhausted:
                 reason = f"candidates={cands}" if cands < MIN_CANDIDATES_THRESHOLD else "low yield"
-                wait_s = seconds_until_next_midnight_utc()
+                wait_s = 2 * 3600  # 2 hours — new matches trickle in constantly
                 wake_at = (datetime.now(timezone.utc) + timedelta(seconds=wait_s)).strftime("%Y-%m-%d %H:%M UTC")
-                log.info(
-                    "💤 Day exhausted (%s). Sleeping %.0fs until %s (+%dh buffer).",
-                    reason, wait_s, wake_at, NEXT_DAY_BUFFER_S // 3600
-                )
+                log.info("💤 Pool exhausted (%s). Sleeping %.0fs until %s.", reason, wait_s, wake_at)
                 time.sleep(wait_s)
             else:
                 log.info("Sleeping %ds…", LOOP_DELAY_S)
